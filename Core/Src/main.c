@@ -34,6 +34,7 @@
 /* Private variables ---------------------------------------------------------*/
 UART_HandleTypeDef hlpuart1;
 UART_HandleTypeDef huart1;
+UART_HandleTypeDef huart3;
 DMA_HandleTypeDef hdma_usart1_rx;
 
 SPI_HandleTypeDef hspi1;
@@ -41,7 +42,7 @@ SPI_HandleTypeDef hspi1;
 /* USER CODE BEGIN PV */
 uint8_t test_buffer[3 * 5] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
 uint8_t response [7] = {0};
-uint8_t rx_buffer[3 * 84] = {0};  // Triple buffer for continuous DMA
+uint8_t rx_buffer[4 * 100] = {0};  // Triple buffer for continuous DMA
 uint8_t copy_buffer[5] = {0};  // Triple buffer for continuous DMA
 //int count = 0;
 bool startup = true;
@@ -57,6 +58,7 @@ static void MX_GPIO_Init(void);
 static void MX_DMA_Init(void);
 static void MX_SPI1_Init(void);
 static void MX_USART1_UART_Init(void);
+static void MX_USART3_UART_Init(void);
 static void MX_LPUART1_UART_Init(void);
 /* USER CODE BEGIN PFP */
 
@@ -78,6 +80,8 @@ const uint8_t font_digits[10][8] = {
     {0x3C,0x66,0x66,0x3C,0x66,0x66,0x3C,0x00}, //8
     {0x3C,0x66,0x66,0x3E,0x06,0x0C,0x38,0x00}  //9
 };
+int decoded = 0;
+int displayed = 0;
 
 //// Draw digit into frame buffer (fast)
 //void DrawDigitToFrame(int x,int y,uint8_t digit,uint16_t color,uint8_t scale){
@@ -108,7 +112,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 //    		// First callback is for the 7-byte response, now start 84-byte receptions
 //    		startup = false;
 //
-//    		HAL_UART_Receive_DMA(&huart1, rx_buffer, 84);
+//    		HAL_UART_Receive_DMA(&huart1, rx_buffer + next_k * 100, 100);
 //
 //    	}
 //		else{
@@ -164,6 +168,7 @@ int main(void)
   MX_DMA_Init();
   MX_SPI1_Init();
   MX_USART1_UART_Init();
+  MX_USART3_UART_Init();
   MX_LPUART1_UART_Init();
   /* USER CODE BEGIN 2 */
   HAL_Delay(1000); // Sleep out
@@ -182,81 +187,21 @@ int main(void)
   HAL_Delay(20);
 
   ILI9341_DisplayFrame(&hspi1);
-  HAL_UART_Receive_DMA(&huart1, rx_buffer, 7);
 
-//  send_stop_command(&huart1);
-//  //__HAL_UART_CLEAR_OREFLAG(&huart1);
-//
-//  // Small delay for LIDAR to be ready
-//   HAL_Delay(100);
-//
-//  	// Start DMA reception ready for incoming data
-//   HAL_UART_Receive_DMA(&huart1, response, 7);
-//   HAL_Delay(1000);
-//  	// Send the express scan command
-//   send_expresss_scan_command(&huart1);
-//   __HAL_UART_CLEAR_IT(&huart1,  UART_CLEAR_OREF);
-//  uint8_t packet1[84] = {
-//      0xFA,0x58,0x00,0x80,0x80,0x3E,0x00,0x41,0x32,0x00,0x3F,0x80,
-//      0x41,0x43,0x80,0x3F,0x00,0x42,0x54,0x00,0x40,0x80,0x42,0x65,
-//      0x80,0x40,0x00,0x43,0x72,0x00,0x41,0x80,0x43,0x33,0x80,0x41,
-//      0x00,0x44,0x44,0x00,0x42,0x80,0x44,0x55,0x80,0x42,0x00,0x45,
-//      0x62,0x00,0x43,0x80,0x45,0x73,0x80,0x43,0x00,0x46,0x34,0x00,
-//      0x44,0x80,0x46,0x45,0x80,0x44,0x00,0x47,0x52,0x00,0x45,0x80,
-//      0x47,0x63,0x80,0x45,0x00,0x48,0x74,0x00,0x46,0x80,0x48,0x35
-//  };
-//
-//  uint8_t packet2[84] = {
-//      0xAA,0x5A,0xD0,0x02,0xD0,0x3E,0x50,0x41,0x32,0x50,0x3F,0xD0,
-//      0x41,0x43,0xD0,0x3F,0x50,0x42,0x54,0x50,0x40,0xD0,0x42,0x65,
-//      0xD0,0x40,0x50,0x43,0x72,0x50,0x41,0xD0,0x43,0x33,0xD0,0x41,
-//      0x50,0x44,0x44,0x50,0x42,0xD0,0x44,0x55,0xD0,0x42,0x50,0x45,
-//      0x62,0x50,0x43,0xD0,0x45,0x73,0xD0,0x43,0x50,0x46,0x34,0x50,
-//      0x44,0xD0,0x46,0x45,0xD0,0x44,0x50,0x47,0x52,0x50,0x45,0xD0,
-//      0x47,0x63,0xD0,0x45,0x50,0x48,0x74,0x50,0x46,0xD0,0x48,0x35
-//  };
-//
-//  uint8_t packet3[84] = {
-//      0xAA,0x5D,0xA0,0x05,0x20,0x3F,0xA0,0x41,0x32,0xA0,0x3F,0x20,
-//      0x42,0x43,0x20,0x40,0xA0,0x42,0x54,0xA0,0x40,0x20,0x43,0x65,
-//      0x20,0x41,0xA0,0x43,0x72,0xA0,0x41,0x20,0x44,0x33,0x20,0x42,
-//      0xA0,0x44,0x44,0xA0,0x42,0x20,0x45,0x55,0x20,0x43,0xA0,0x45,
-//      0x62,0xA0,0x43,0x20,0x46,0x73,0x20,0x44,0xA0,0x46,0x34,0xA0,
-//      0x44,0x20,0x47,0x45,0x20,0x45,0xA0,0x47,0x52,0xA0,0x45,0x20,
-//      0x48,0x63,0x20,0x46,0xA0,0x48,0x74,0xA0,0x46,0x20,0x49,0x35
-//  };
-//
-//  uint8_t packet4[84] = {
-//      0x7A,0x50,0x70,0x08,0x70,0x3F,0xF0,0x41,0x32,0xF0,0x3F,0x70,
-//      0x42,0x43,0x70,0x40,0xF0,0x42,0x54,0xF0,0x40,0x70,0x43,0x65,
-//      0x70,0x41,0xF0,0x43,0x72,0xF0,0x41,0x70,0x44,0x33,0x70,0x42,
-//      0xF0,0x44,0x44,0xF0,0x42,0x70,0x45,0x55,0x70,0x43,0xF0,0x45,
-//      0x62,0xF0,0x43,0x70,0x46,0x73,0x70,0x44,0xF0,0x46,0x34,0xF0,
-//      0x44,0x70,0x47,0x45,0x70,0x45,0xF0,0x47,0x52,0xF0,0x45,0x70,
-//      0x48,0x63,0x70,0x46,0xF0,0x48,0x74,0xF0,0x46,0x70,0x49,0x35
-//  };
-//
-//  uint8_t packet5[84] = {
-//      0x3A,0x53,0x40,0x0B,0xC0,0x3F,0x40,0x42,0x32,0x40,0x40,0xC0,
-//      0x42,0x43,0xC0,0x40,0x40,0x43,0x54,0x40,0x41,0xC0,0x43,0x65,
-//      0xC0,0x41,0x40,0x44,0x72,0x40,0x42,0xC0,0x44,0x33,0xC0,0x42,
-//      0x40,0x45,0x44,0x40,0x43,0xC0,0x45,0x55,0xC0,0x43,0x40,0x46,
-//      0x62,0x40,0x44,0xC0,0x46,0x73,0xC0,0x44,0x40,0x47,0x34,0x40,
-//      0x45,0xC0,0x47,0x45,0xC0,0x45,0x40,0x48,0x52,0x40,0x46,0xC0,
-//      0x48,0x63,0xC0,0x46,0x40,0x49,0x74,0x40,0x47,0xC0,0x49,0x35
-//  };
-//  uint8_t packet1[5] = {0x29, 0x01, 0x00, 0xD0, 0x07};
-//    // Packet 2
-//    uint8_t packet2[5] = {0x3E, 0x01, 0x0F, 0x60, 0x09};
-//    // Packet 3
-//    uint8_t packet3[5] = {0x52, 0x01, 0x1E, 0xF0, 0x0A};
-//    // Packet 4
-//    uint8_t packet4[5] = {0x66, 0x01, 0x2D, 0x80, 0x0C};
-//    // Packet 5
-//    uint8_t packet5[5] = {0x7A, 0x01, 0x3C, 0x10, 0x0E};
-//
-//  uint32_t start;
-//  uint32_t elapsed;
+  send_stop_command(&huart1);
+  //__HAL_UART_CLEAR_OREFLAG(&huart1);
+
+  // Small delay for LIDAR to be ready
+  HAL_Delay(5000);
+
+  // Start DMA reception ready for incoming data
+  HAL_UART_Receive_DMA(&huart1, rx_buffer, 8);
+
+  HAL_Delay(1000);
+  // Send the express scan command
+  send_scan_command(&huart1);
+  __HAL_UART_CLEAR_IT(&huart1,  UART_CLEAR_OREF);
+
 
   /* USER CODE END 2 */
 
@@ -267,47 +212,15 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-//	  decode_express_capsule(copy_buffer);
-//
-//	  start = HAL_GetTick();
-//	  decode_normal_scan(packet1);
-//	  ILI9341_DisplayFrame(&hspi1);
-//	  elapsed = HAL_GetTick() - start;
-//	  printf("Decode time: %lu ms\n", elapsed);
-//
-//	  start = HAL_GetTick();
-//	  decode_normal_scan(packet2);
-//	  ILI9341_DisplayFrame(&hspi1);
-//	  elapsed = HAL_GetTick() - start;
-//	  printf("Decode time: %lu ms\n", elapsed);
-//
-//	  start = HAL_GetTick();
-//	  decode_normal_scan(packet3);
-//	  ILI9341_DisplayFrame(&hspi1);
-//	  elapsed = HAL_GetTick() - start;
-//	  printf("Decode time: %lu ms\n", elapsed);
-//
-//	  start = HAL_GetTick();
-//	  decode_normal_scan(packet4);
-//	  ILI9341_DisplayFrame(&hspi1);
-//	  elapsed = HAL_GetTick() - start;
-//	  printf("Decode time: %lu ms\n", elapsed);
-//
-//
-//	  start = HAL_GetTick();
-//	  decode_normal_scan(packet5);
-//	  ILI9341_DisplayFrame(&hspi1);
-//	  elapsed = HAL_GetTick() - start;
-//	  printf("Decode time: %lu ms\n", elapsed);
-//
-//	  decode_normal_scan(copy_buffer);
-//	  ILI9341_DisplayFrame(&hspi1);
 
 	  if(data_ready_k != 0xFF){
+
 		  uint8_t buffer_to_process = data_ready_k;
 		  data_ready_k = 0xFF;
 		  decode_normal_scan(rx_buffer + buffer_to_process*5);
+		  decoded++;
 		  ILI9341_DisplayFrame(&hspi1);
+		  displayed++;
 	  }
   }
   /* USER CODE END 3 */
@@ -456,6 +369,54 @@ static void MX_USART1_UART_Init(void)
   /* USER CODE BEGIN USART1_Init 2 */
 
   /* USER CODE END USART1_Init 2 */
+
+}
+
+/**
+  * @brief USART3 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_USART3_UART_Init(void)
+{
+
+  /* USER CODE BEGIN USART3_Init 0 */
+
+  /* USER CODE END USART3_Init 0 */
+
+  /* USER CODE BEGIN USART3_Init 1 */
+
+  /* USER CODE END USART3_Init 1 */
+  huart3.Instance = USART3;
+  huart3.Init.BaudRate = 115200;
+  huart3.Init.WordLength = UART_WORDLENGTH_8B;
+  huart3.Init.StopBits = UART_STOPBITS_1;
+  huart3.Init.Parity = UART_PARITY_NONE;
+  huart3.Init.Mode = UART_MODE_TX_RX;
+  huart3.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart3.Init.OverSampling = UART_OVERSAMPLING_16;
+  huart3.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
+  huart3.Init.ClockPrescaler = UART_PRESCALER_DIV1;
+  huart3.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
+  if (HAL_UART_Init(&huart3) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_UARTEx_SetTxFifoThreshold(&huart3, UART_TXFIFO_THRESHOLD_1_8) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_UARTEx_SetRxFifoThreshold(&huart3, UART_RXFIFO_THRESHOLD_1_8) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_UARTEx_DisableFifoMode(&huart3) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN USART3_Init 2 */
+
+  /* USER CODE END USART3_Init 2 */
 
 }
 
@@ -646,14 +607,6 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   GPIO_InitStruct.Alternate = GPIO_AF14_TIM15;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
-
-  /*Configure GPIO pins : PD8 PD9 */
-  GPIO_InitStruct.Pin = GPIO_PIN_8|GPIO_PIN_9;
-  GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
-  GPIO_InitStruct.Alternate = GPIO_AF7_USART3;
-  HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
 
   /*Configure GPIO pins : PD14 PD15 */
   GPIO_InitStruct.Pin = GPIO_PIN_14|GPIO_PIN_15;

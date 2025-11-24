@@ -25,6 +25,10 @@ const uint8_t stop[2] = {
             0xA5, 0x25
         };
 
+const uint8_t scan[2] = {
+            0xA5, 0x20
+        };
+
 uint8_t prev_packet[84];
 extern bool has_prev_packet;
 float prev_start_angle = 0;
@@ -46,6 +50,11 @@ void send_stop_command(UART_HandleTypeDef* huart_addr) {
 void send_express_scan_command(UART_HandleTypeDef* huart_addr) {
     HAL_UART_Transmit(huart_addr, express_scan, sizeof(express_scan), HAL_MAX_DELAY);
 }
+
+void send_scan_command(UART_HandleTypeDef* huart_addr){
+    HAL_UART_Transmit(huart_addr, scan, sizeof(scan), HAL_MAX_DELAY);
+}
+
 void decode_normal_scan(uint8_t* capsule_data) {
 
     // Normal scan response is 5 bytes per measurement:
@@ -53,43 +62,43 @@ void decode_normal_scan(uint8_t* capsule_data) {
     // Byte 1: angle_high (bits 7-1), check_bit (bit 0, must be 1)
     // Byte 2: angle_low (bits 7-0)
     // Bytes 3-4: distance (little endian, 16-bit)
+		// Extract flags
+		bool new_scan = (capsule_data[0] & 0b1) != 0;
+		bool inversed_new_scan = ((capsule_data[0] >> 1) & 0b1) != 0;
+		uint8_t quality = capsule_data[0] >> 2;
 
-    // Extract flags
-    bool new_scan = (capsule_data[0] & 0b1) != 0;
-    bool inversed_new_scan = ((capsule_data[0] >> 1) & 0b1) != 0;
-    uint8_t quality = capsule_data[0] >> 2;
+		if (new_scan){
+			new_scan_flag = true;
+			if (f == pingframe) f = pongframe;
+			else if (f == pongframe) f = pingframe;
+		}
 
-    if (new_scan){
-        new_scan_flag = true;
-        if (f == pingframe) f = pongframe;
-        else if (f == pongframe) f = pingframe;
-    }
+	    // Validate flags
+	    if (new_scan == inversed_new_scan) {
+	        //printf("ERROR: New scan flags mismatch\n");
+	        return;
+	    }
 
-//    // Validate flags
-//    if (new_scan == inversed_new_scan) {
-//        printf("ERROR: New scan flags mismatch\n");
-//        return;
-//    }
-//
-//    // Check bit validation
-//    uint8_t check_bit = capsule_data[1] & 0b1;
-//    if (check_bit != 1) {
-//        printf("ERROR: Check bit not equal to 1\n");
-//        return;
-//    }
+	    // Check bit validation
+	    uint8_t check_bit = capsule_data[1] & 0b1;
+	    if (check_bit != 1) {
+	        //printf("ERROR: Check bit not equal to 1\n");
+	        return;
+	    }
 
-    // Extract angle: ((raw[1] >> 1) + (raw[2] << 7)) / 64.0
-    uint16_t angle_raw = ((capsule_data[1] >> 1) + (capsule_data[2] << 7));
-    float angle = angle_raw / 64.0f;
+		// Extract angle: ((raw[1] >> 1) + (raw[2] << 7)) / 64.0
+		uint16_t angle_raw = ((capsule_data[1] >> 1) + (capsule_data[2] << 7));
+		float angle = angle_raw / 64.0f;
 
-    // Extract distance: (raw[3] + (raw[4] << 8)) / 4.0
-    uint16_t distance_raw = capsule_data[3] + (capsule_data[4] << 8);
-    float distance_mm = distance_raw / 4.0f;
+		// Extract distance: (raw[3] + (raw[4] << 8)) / 4.0
+		uint16_t distance_raw = capsule_data[3] + (capsule_data[4] << 8);
+		float distance_mm = distance_raw / 4.0f;
 
-//    // Print the result
-//    printf("%s theta: %06.1f Dist: %08.2f Q: %d\n",
-//           new_scan ? "S " : "  ", angle, distance_mm, quality);
-
-    DrawPoint(angle, distance_mm);
+	//    // Print the result
+	//    printf("%s theta: %06.1f Dist: %08.2f Q: %d\n",
+	//           new_scan ? "S " : "  ", angle, distance_mm, quality);
+		if(quality >=  MIN_SCAN_QUALITY){
+			DrawPoint(angle, distance_mm);
+		}
     //DrawPoint(angle2, dist2_mm, f);
 }

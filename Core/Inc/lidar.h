@@ -12,13 +12,14 @@
 #define SL_LIDAR_CMD_SET_MOTOR_PWM          0xF0
 #define SL_LIDAR_CMD_STOP                   0x25
 
-
+#define MIN_SCAN_QUALITY 10
 
 //float angle_diff(float angle1, float angle2);
 
 
 void send_stop_command(UART_HandleTypeDef* huart_addr);
 
+void send_scan_command(UART_HandleTypeDef *huart_addr);
 
 void send_express_scan_command(UART_HandleTypeDef* huart_addr);
 
