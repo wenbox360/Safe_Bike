@@ -58,6 +58,13 @@
 
 #define HEIGHT 320
 
+#define GRID_DIM 8
+
+#define MAX_DIST 2000
+
+#define MAX_RADIUS (WIDTH/2 - 10)
+
+extern uint8_t zone[GRID_DIM*GRID_DIM];
 
 
 extern uint16_t pingframe[WIDTH*HEIGHT]; // Full screen buffer
@@ -73,6 +80,10 @@ void ILI9341_DisplayFrame(SPI_HandleTypeDef* hspi_addr);
 
 
 void DrawPoint(float angle, float dist);
+
+void DrawZone(void);
+
+void UpdateZone(float angle, float dist);
 
 
 

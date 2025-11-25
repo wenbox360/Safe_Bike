@@ -51,7 +51,7 @@ volatile uint8_t data_ready_k = 0xFF; // 0xFF = no data ready, 0-2 = which buffe
 HAL_StatusTypeDef type = HAL_OK;
 bool ready_t = true;
 
-bool zone_mode = false;
+bool zone_mode = true;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -85,23 +85,6 @@ const uint8_t font_digits[10][8] = {
 int decoded = 0;
 int displayed = 0;
 
-//// Draw digit into frame buffer (fast)
-//void DrawDigitToFrame(int x,int y,uint8_t digit,uint16_t color,uint8_t scale){
-//    if(digit>9) return;
-//    for(uint8_t row=0; row<8; row++){
-//    	for(uint8_t col=0; col<8; col++){
-//    	    if(font_digits[digit][row] & (1 << col)){  // <--- use LSB first
-//    	        for(uint8_t i=0;i<scale;i++){
-//    	            for(uint8_t j=0;j<scale;j++){
-//    	                int px = x + col*scale + i;
-//    	                int py = y + row*scale + j;
-//    	                if(px<WIDTH && py<HEIGHT) frame[py*WIDTH + px] = color;
-//    	            }
-//    	        }
-//    	    }
-//    	}
-//    }
-//}
 
 
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
@@ -133,7 +116,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 	    	// Rotate buffer indices for next iteration
 		}
     	k = next_k;
-    	next_k = (next_k + 1) % 3;
+    	next_k = (next_k + 1) % 4;
     }
 }
 /* USER CODE END 0 */

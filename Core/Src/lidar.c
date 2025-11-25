@@ -103,7 +103,7 @@ void decode_normal_scan(uint8_t* capsule_data) {
 	//           new_scan ? "S " : "  ", angle, distance_mm, quality);
 		if(quality >=  MIN_SCAN_QUALITY){
 			if(zone_mode){
-
+                UpdateZone(angle, distance_mm);
 			} else{
 				DrawPoint(angle, distance_mm);
 			}
