@@ -146,6 +146,14 @@ void DrawPoint(float angle, float dist){
     f[(y + 1)*WIDTH + x + 1] = color;
 
 }
+
+
+
+void DrawZone(float angle, float dist){
+	//TODO
+
+}
+
 void DrawLine(){
 
     uint8_t SIZE = 240;

@@ -47,10 +47,11 @@ uint8_t rx_buffer[4 * 100] = {0};  // Triple buffer for continuous DMA
 uint8_t copy_buffer[5] = {0};  // Triple buffer for continuous DMA
 //int count = 0;
 bool startup = true;
-bool has_prev_packet = false;
 volatile uint8_t data_ready_k = 0xFF; // 0xFF = no data ready, 0-2 = which buffer is ready
 HAL_StatusTypeDef type = HAL_OK;
 bool ready_t = true;
+
+bool zone_mode = false;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -114,6 +115,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
     		startup = false;
     		HAL_UART_Receive_DMA(&huart1, rx_buffer + next_k * 100, 100);
 
+
     	}
 		else{
 			// Mark which buffer is ready for processing (will be processed in main loop)
@@ -129,9 +131,9 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 			//ILI9341_DisplayFrame(&hspi1);
 //			count++;
 	    	// Rotate buffer indices for next iteration
-			k = next_k;
-			next_k = (next_k + 1) % 3;
 		}
+    	k = next_k;
+    	next_k = (next_k + 1) % 3;
     }
 }
 /* USER CODE END 0 */

@@ -9,8 +9,11 @@
 #include "lcd.h"
 #include <stdio.h>
 
+extern bool zone_mode;
+
 int new_scan_flag = false;
 uint16_t* f = pingframe;
+
 
 const uint8_t express_scan[9] = {
             0xA5, 0x82,
@@ -29,9 +32,10 @@ const uint8_t scan[2] = {
             0xA5, 0x20
         };
 
-uint8_t prev_packet[84];
-extern bool has_prev_packet;
-float prev_start_angle = 0;
+//uint8_t prev_packet[84];
+//extern bool has_prev_packet;
+//float prev_start_angle = 0;
+
 
 //float angle_diff(float angle1, float angle2) {
 //    if (angle1 <= angle2) {
@@ -98,7 +102,11 @@ void decode_normal_scan(uint8_t* capsule_data) {
 	//    printf("%s theta: %06.1f Dist: %08.2f Q: %d\n",
 	//           new_scan ? "S " : "  ", angle, distance_mm, quality);
 		if(quality >=  MIN_SCAN_QUALITY){
-			DrawPoint(angle, distance_mm);
+			if(zone_mode){
+
+			} else{
+				DrawPoint(angle, distance_mm);
+			}
 		}
     //DrawPoint(angle2, dist2_mm, f);
 }
