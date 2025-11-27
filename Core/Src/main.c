@@ -38,12 +38,11 @@ UART_HandleTypeDef huart3;
 DMA_HandleTypeDef hdma_usart1_rx;
 
 SPI_HandleTypeDef hspi1;
-DMA_HandleTypeDef hdma_spi1_tx;
 
 /* USER CODE BEGIN PV */
 uint8_t test_buffer[3 * 5] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
 uint8_t response [7] = {0};
-uint8_t rx_buffer[4 * 100] = {0};  // Triple buffer for continuous DMA
+uint8_t rx_buffer[4 * 1000] = {0};  // Triple buffer for continuous DMA
 uint8_t copy_buffer[5] = {0};  // Triple buffer for continuous DMA
 //int count = 0;
 bool startup = true;
@@ -96,7 +95,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
     	if(startup){
     		// First callback is for the 7-byte response, now start 84-byte receptions
     		startup = false;
-    		HAL_UART_Receive_DMA(&huart1, rx_buffer + next_k * 100, 100);
+    		HAL_UART_Receive_DMA(&huart1, rx_buffer + next_k * 1000, 1000);
 
 
     	}
@@ -105,7 +104,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 			data_ready_k = k;
 
 			// Immediately start next DMA Transmit to avoid overrun
-			HAL_UART_Receive_DMA(&huart1, rx_buffer + next_k * 100, 100);
+			HAL_UART_Receive_DMA(&huart1, rx_buffer + next_k * 1000, 1000);
 
 //			memcpy(copy_buffer, rx_buffer + 5 * k, 5);
 
@@ -119,6 +118,23 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
     	next_k = (next_k + 1) % 4;
     }
 }
+
+//// EXTI Line15 External Interrupt ISR Handler CallBackFun
+//void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
+//{
+//    if(GPIO_Pin == GPIO_PIN_0) // If The INT Source Is EXTI Line9 (A9 Pin)
+//    {
+//    	zone_mode = !zone_mode; // Toggle mode
+//
+//    }
+//
+//    if(GPIO_Pin == GPIO_PIN_1) // If The INT Source Is EXTI Line9 (A9 Pin)
+//        {
+//        	zone_mode = !zone_mode; // Toggle mode
+//
+//      }
+//}
+
 /* USER CODE END 0 */
 
 /**
@@ -177,7 +193,7 @@ int main(void)
   //__HAL_UART_CLEAR_OREFLAG(&huart1);
 
   // Small delay for LIDAR to be ready
-  HAL_Delay(5000);
+  HAL_Delay(500);
 
 
   while (__HAL_UART_GET_FLAG(&huart1, UART_FLAG_RXNE)) {
@@ -204,16 +220,51 @@ int main(void)
 
     /* USER CODE BEGIN 3 */
 
-	  if(data_ready_k != 0xFF){
+	//   if(data_ready_k != 0xFF){
 
-		  uint8_t buffer_to_process = data_ready_k;
-		  data_ready_k = 0xFF;
-		  for(int i = 0; i < 20; i++){
-			  decode_normal_scan(rx_buffer + buffer_to_process*100 + 5*i);
-		  }
-		  decoded++;
-		  ILI9341_DisplayFrame(&hspi1);
-		  displayed++;
+	// 	  uint8_t buffer_to_process = data_ready_k;
+	// 	  data_ready_k = 0xFF;
+	// 	  for(int i = 0; i < 40; i++){
+	// 		  decode_normal_scan(rx_buffer + buffer_to_process*200 + 5*i);
+	// 	  }
+	// 	  decoded++;
+	// 	  ILI9341_DisplayFrame(&hspi1);
+	// 	  displayed++;
+	//   }
+
+	//   if(HAL_GPIO_ReadPin (GPIOG, GPIO_PIN_0)){
+	// 	  zone_mode = true;
+	//   } else{
+	// 	  zone_mode = false;
+	//   }
+  // }
+
+  if (data_ready_k != 0xFF) {
+
+          uint8_t buffer_to_process = data_ready_k;
+          data_ready_k = 0xFF;
+
+          // Process the buffer, accounting for potential shifts in decode_normal_scan
+          uint8_t* current_packet = rx_buffer + buffer_to_process * 1000;
+          uint8_t* buffer_end = current_packet + 1000; // End of the buffer
+
+          while (current_packet + 5 <= buffer_end) { // Ensure at least 5 bytes remain
+              if (decode_normal_scan(current_packet)) {
+                  current_packet += 5; // Move to the next packet only if valid
+              } else {
+                  current_packet++; // Skip to the next byte for invalid packets
+              }
+          }
+
+          decoded++;
+          ILI9341_DisplayFrame(&hspi1);
+          displayed++;
+      }
+
+      if(HAL_GPIO_ReadPin (GPIOG, GPIO_PIN_0)){
+		  zone_mode = false;
+	  } else{
+		  zone_mode = true;
 	  }
   }
   /* USER CODE END 3 */
@@ -467,9 +518,6 @@ static void MX_DMA_Init(void)
   /* DMA1_Channel1_IRQn interrupt configuration */
   HAL_NVIC_SetPriority(DMA1_Channel1_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(DMA1_Channel1_IRQn);
-  /* DMA1_Channel2_IRQn interrupt configuration */
-  HAL_NVIC_SetPriority(DMA1_Channel2_IRQn, 0, 0);
-  HAL_NVIC_EnableIRQ(DMA1_Channel2_IRQn);
 
 }
 
@@ -492,8 +540,8 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOH_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
   __HAL_RCC_GPIOB_CLK_ENABLE();
-  __HAL_RCC_GPIOD_CLK_ENABLE();
   __HAL_RCC_GPIOG_CLK_ENABLE();
+  __HAL_RCC_GPIOD_CLK_ENABLE();
   HAL_PWREx_EnableVddIO2();
 
   /*Configure GPIO pin Output Level */
@@ -564,6 +612,12 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : PG0 */
+  GPIO_InitStruct.Pin = GPIO_PIN_0;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  HAL_GPIO_Init(GPIOG, &GPIO_InitStruct);
 
   /*Configure GPIO pins : PE7 PE8 PE9 */
   GPIO_InitStruct.Pin = GPIO_PIN_7|GPIO_PIN_8|GPIO_PIN_9;
@@ -699,6 +753,16 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   GPIO_InitStruct.Alternate = GPIO_AF2_TIM4;
   HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : PE1 */
+  GPIO_InitStruct.Pin = GPIO_PIN_1;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
+
+  /* EXTI interrupt init*/
+  HAL_NVIC_SetPriority(EXTI0_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI0_IRQn);
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 

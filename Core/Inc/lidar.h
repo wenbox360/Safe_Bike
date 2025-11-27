@@ -25,4 +25,5 @@ void send_express_scan_command(UART_HandleTypeDef* huart_addr);
 
 
 //void decode_express_capsule(uint8_t* capsule_data);
-void decode_normal_scan(uint8_t* raw);
+bool decode_normal_scan(uint8_t* raw);
+// void decode_normal_scan(uint8_t* raw);
