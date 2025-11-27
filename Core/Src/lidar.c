@@ -110,6 +110,23 @@ void send_scan_command(UART_HandleTypeDef* huart_addr){
 // 		}
 // }
 
+
+// int clear_quadrant = 0;
+
+// void process_angle(int pp_angle) {
+//     int quadrant = pp_angle / 5760; // 0 for 0-90, 1 for 91-180, etc.
+
+//     if (quadrant != clear_quadrant) {
+//         // Clear the new quadrant
+//         ClearQuadrant(quadrant);
+// 		ILI9341_DisplayFrame(&hspi1);
+//         clear_quadrant = (quadrant + 1) % 4;
+//     }
+//     // ...existing code to draw/update...
+// }
+
+
+
 bool decode_normal_scan(uint8_t* capsule_data) {
     // Validate quality
     uint8_t quality = capsule_data[0] >> 2;
@@ -130,16 +147,16 @@ bool decode_normal_scan(uint8_t* capsule_data) {
         return false; // Invalid packet
     }
 
-    if (new_scan){
-		new_scan_flag = true;
-		if (f == pingframe) f = pongframe;
-		else if (f == pongframe) f = pingframe;
-	}
+    // if (new_scan){
+	// 	new_scan_flag = true;
+	// 	if (f == pingframe) f = pongframe;
+	// 	else if (f == pongframe) f = pingframe;
+	// }
 
     // If all validations pass, proceed with decoding
     uint16_t angle_raw = ((capsule_data[1] >> 1) + (capsule_data[2] << 7));
 
-	process_angle(angle_raw);
+    // process_angle(angle_raw);
     float angle = angle_raw / 64.0f;
 
     uint16_t distance_raw = capsule_data[3] + (capsule_data[4] << 8);

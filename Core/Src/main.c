@@ -240,7 +240,7 @@ int main(void)
   // }
 
   if (data_ready_k != 0xFF) {
-
+          FillFrame(pingframe, 0x0000);
           uint8_t buffer_to_process = data_ready_k;
           data_ready_k = 0xFF;
 

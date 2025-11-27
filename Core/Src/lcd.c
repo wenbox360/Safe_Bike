@@ -226,17 +226,41 @@ void DrawLine(){
     }
 }
 
+
+// void ClearQuadrant(int quadrant) {
+//     uint8_t OFFSET = 120;
+//     uint16_t color = 0x0000; // black
+
+//     float start_angle = quadrant * 90.0f;
+//     float end_angle = start_angle + 90.0f;
+
+//     for (int y = 0; y < HEIGHT; y++) {
+//         for (int x = 0; x < WIDTH; x++) {
+//             // Convert (x, y) to polar coordinates relative to center
+//             float dx = x - OFFSET;
+//             float dy = y - OFFSET;
+//             float angle = atan2(dx, dy) * 180.0f / M_PI;
+//             if (angle < 0) angle += 360.0f;
+
+//             // If pixel is in the quadrant, clear it
+//             if (angle >= start_angle && angle < end_angle) {
+//                 f[y * WIDTH + x] = color;
+//             }
+//         }
+//     }
+// }
+
 // Send the frame buffer to the display
 void ILI9341_DisplayFrame(SPI_HandleTypeDef* hspi_addr) {
-    if (f == pingframe && new_scan_flag) {
-        FillFrame(pongframe, 0x0000);
-        memset(zone, 0, sizeof(zone));
-        new_scan_flag = false;
-    } else if (f == pongframe && new_scan_flag) {
-        FillFrame(pingframe, 0x0000);
-        memset(zone, 0, sizeof(zone));
-        new_scan_flag = false;
-    }
+    // if (f == pingframe && new_scan_flag) {
+    //     FillFrame(pongframe, 0x0000);
+    //     memset(zone, 0, sizeof(zone));
+    //     new_scan_flag = false;
+    // } else if (f == pongframe && new_scan_flag) {
+    //     FillFrame(pingframe, 0x0000);
+    //     memset(zone, 0, sizeof(zone));
+    //     new_scan_flag = false;
+    // }
 
     DrawLine();
 
