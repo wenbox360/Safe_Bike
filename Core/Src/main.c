@@ -51,7 +51,7 @@ HAL_StatusTypeDef type = HAL_OK;
 bool ready_t = true;
 
 bool zone_mode = false;
-bool filter_mode = true;
+bool filter_mode = false;
 extern bool zone_detected[GRID_DIM*GRID_DIM];
 extern uint16_t zone_history[GRID_DIM*GRID_DIM];
 /* USER CODE END PV */
@@ -266,13 +266,22 @@ int main(void)
       ILI9341_DisplayFrame(&hspi1);
       displayed++;
     }
-          
-    if(HAL_GPIO_ReadPin (GPIOG, GPIO_PIN_0)){
+
+    // If read low, meaning pushed then start the corresponding mode
+
+    if(HAL_GPIO_ReadPin (GPIOE, GPIO_PIN_9)){
 		  zone_mode = false;
 	  } else{
-		  zone_mode = false;
+		  zone_mode = true;
 	  }
+
+    if(HAL_GPIO_ReadPin (GPIOF, GPIO_PIN_13)){
+    	filter_mode = false;
+    } else{
+    	filter_mode = true;
+    }
   }
+
   /* USER CODE END 3 */
 }
 
@@ -619,18 +628,30 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
+  /*Configure GPIO pin : PF13 */
+  GPIO_InitStruct.Pin = GPIO_PIN_13;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  HAL_GPIO_Init(GPIOF, &GPIO_InitStruct);
+
   /*Configure GPIO pin : PG0 */
   GPIO_InitStruct.Pin = GPIO_PIN_0;
   GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
   GPIO_InitStruct.Pull = GPIO_PULLUP;
   HAL_GPIO_Init(GPIOG, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : PE7 PE8 PE9 */
-  GPIO_InitStruct.Pin = GPIO_PIN_7|GPIO_PIN_8|GPIO_PIN_9;
+  /*Configure GPIO pins : PE7 PE8 */
+  GPIO_InitStruct.Pin = GPIO_PIN_7|GPIO_PIN_8;
   GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   GPIO_InitStruct.Alternate = GPIO_AF1_TIM1;
+  HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : PE9 */
+  GPIO_InitStruct.Pin = GPIO_PIN_9;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
   HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
 
   /*Configure GPIO pins : PE10 PE11 PE12 */
