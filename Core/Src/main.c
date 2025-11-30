@@ -39,11 +39,14 @@ DMA_HandleTypeDef hdma_usart1_rx;
 
 SPI_HandleTypeDef hspi1;
 
+TIM_HandleTypeDef htim1;
+
 /* USER CODE BEGIN PV */
 uint8_t test_buffer[3 * 5] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
 uint8_t response [7] = {0};
 uint8_t rx_buffer[4 * 1000] = {0};  // Triple buffer for continuous DMA
 uint8_t copy_buffer[5] = {0};  // Triple buffer for continuous DMA
+uint8_t count = 0;
 //int count = 0;
 bool startup = true;
 volatile uint8_t data_ready_k = 0xFF; // 0xFF = no data ready, 0-2 = which buffer is ready
@@ -64,6 +67,7 @@ static void MX_SPI1_Init(void);
 static void MX_USART1_UART_Init(void);
 static void MX_USART3_UART_Init(void);
 static void MX_LPUART1_UART_Init(void);
+static void MX_TIM1_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -81,49 +85,31 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
     static uint8_t next_k = 1;
 
     if (huart->Instance == USART1) {
-
     	if(startup){
     		// First callback is for the 7-byte response, now start 84-byte receptions
     		startup = false;
     		HAL_UART_Receive_DMA(&huart1, rx_buffer + next_k * 1000, 1000);
-
-
     	}
-		else{
-			// Mark which buffer is ready for processing (will be processed in main loop)
-			data_ready_k = k;
-
-			// Immediately start next DMA Transmit to avoid overrun
-			HAL_UART_Receive_DMA(&huart1, rx_buffer + next_k * 1000, 1000);
-
-//			memcpy(copy_buffer, rx_buffer + 5 * k, 5);
-
-
-
-			//ILI9341_DisplayFrame(&hspi1);
-//			count++;
-	    	// Rotate buffer indices for next iteration
-		}
+      else{
+        data_ready_k = k;
+        HAL_UART_Receive_DMA(&huart1, rx_buffer + next_k * 1000, 1000);
+      }
+      // Rotate buffer indices for next iteration
     	k = next_k;
     	next_k = (next_k + 1) % 4;
+      count = 0;
     }
 }
 
-//// EXTI Line15 External Interrupt ISR Handler CallBackFun
-//void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
-//{
-//    if(GPIO_Pin == GPIO_PIN_0) // If The INT Source Is EXTI Line9 (A9 Pin)
-//    {
-//    	zone_mode = !zone_mode; // Toggle mode
-//
-//    }
-//
-//    if(GPIO_Pin == GPIO_PIN_1) // If The INT Source Is EXTI Line9 (A9 Pin)
-//        {
-//        	zone_mode = !zone_mode; // Toggle mode
-//
-//      }
-//}
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
+    if (htim->Instance == TIM1) {
+        count++;
+        if(count == 30){
+            startup = true;
+            count = 0;
+        }
+    }
+}
 
 /* USER CODE END 0 */
 
@@ -161,6 +147,7 @@ int main(void)
   MX_USART1_UART_Init();
   MX_USART3_UART_Init();
   MX_LPUART1_UART_Init();
+  MX_TIM1_Init();
   /* USER CODE BEGIN 2 */
   HAL_Delay(1000); // Sleep out
   ILI9341_Reset();
@@ -198,6 +185,8 @@ int main(void)
   HAL_Delay(1000);
   // Send the express scan command
   send_scan_command(&huart1);
+  HAL_TIM_Base_Start_IT(&htim1);
+
 
 
   /* USER CODE END 2 */
@@ -256,8 +245,19 @@ int main(void)
       displayed++;
     }
 
-    // If read low, meaning pushed then start the corresponding mode
+    if(startup){
+      // while (__HAL_UART_GET_FLAG(&huart1, UART_FLAG_RXNE)) {
+      //     volatile uint8_t dummy = huart1.Instance->RDR;
+      //   }
+      __HAL_UART_CLEAR_IT(&huart1,  UART_CLEAR_OREF);
+      // Start DMA reception ready for incoming data
+      HAL_UART_Receive_DMA(&huart1, rx_buffer, 7);
+      send_scan_command(&huart1);
+      ILI9341_DisplayFrame(&hspi1);
+      HAL_Delay(2000);
+    }
 
+    // If read low, meaning pushed then start the corresponding mode
     if(HAL_GPIO_ReadPin (GPIOE, GPIO_PIN_9)){
 		  zone_mode = false;
 	  } else{
@@ -270,7 +270,6 @@ int main(void)
     	filter_mode = true;
     }
   }
-
   /* USER CODE END 3 */
 }
 
@@ -509,6 +508,53 @@ static void MX_SPI1_Init(void)
 }
 
 /**
+  * @brief TIM1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM1_Init(void)
+{
+
+  /* USER CODE BEGIN TIM1_Init 0 */
+
+  /* USER CODE END TIM1_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM1_Init 1 */
+
+  /* USER CODE END TIM1_Init 1 */
+  htim1.Instance = TIM1;
+  htim1.Init.Prescaler = 183;
+  htim1.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim1.Init.Period = 65535;
+  htim1.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim1.Init.RepetitionCounter = 0;
+  htim1.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim1, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterOutputTrigger2 = TIM_TRGO2_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim1, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM1_Init 2 */
+
+  /* USER CODE END TIM1_Init 2 */
+
+}
+
+/**
   * Enable DMA controller clock
   */
 static void MX_DMA_Init(void)
@@ -628,14 +674,6 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
   GPIO_InitStruct.Pull = GPIO_PULLUP;
   HAL_GPIO_Init(GPIOG, &GPIO_InitStruct);
-
-  /*Configure GPIO pins : PE7 PE8 */
-  GPIO_InitStruct.Pin = GPIO_PIN_7|GPIO_PIN_8;
-  GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  GPIO_InitStruct.Alternate = GPIO_AF1_TIM1;
-  HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
 
   /*Configure GPIO pin : PE9 */
   GPIO_InitStruct.Pin = GPIO_PIN_9;

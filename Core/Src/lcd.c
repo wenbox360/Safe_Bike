@@ -405,6 +405,8 @@ void ILI9341_DisplayFrame(SPI_HandleTypeDef* hspi_addr) {
     } else {
         DrawString("raw mode");
     }
+    } else{
+        DrawString("connection lost...");
     }
 
 
