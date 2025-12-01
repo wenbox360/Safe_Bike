@@ -157,6 +157,7 @@ int main(void)
   HAL_Delay(1000); // Sleep out
   ILI9341_Reset();
   HAL_Delay(1000); // Sleep out
+  ClearLED();
 
   WriteCommand(0x11, &hspi1);
   HAL_Delay(120); // Sleep out
@@ -193,15 +194,6 @@ int main(void)
   HAL_TIM_Base_Start_IT(&htim1);
 
 
-  WS2812_SetLED(0, 255, 0, 0); // Red
-  WS2812_SetLED(1, 255, 0, 0);   // OFF
-  WS2812_SetLED(2, 0, 0, 0);   // OFF
-  WS2812_SetLED(3, 0, 0, 0);   // OFF
-  WS2812_SetLED(4, 0, 0, 0);   // OFF
-  WS2812_SetLED(5, 0, 0, 0);   // OFF
-  WS2812_SetLED(6, 0, 255, 0);   // OFF
-  WS2812_SetLED(7, 0, 255, 0);   // OFF
-  WS2812_Send();
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -281,6 +273,31 @@ int main(void)
     	filter_mode = false;
     } else{
     	filter_mode = true;
+    }
+
+    // Left
+    if(!HAL_GPIO_ReadPin (GPIOB, GPIO_PIN_0)){
+    	 WS2812_SetLED(13, 255, 0, 0); // Red
+    	 WS2812_SetLED(14, 255, 0, 0);   // OFF
+    	 WS2812_SetLED(15, 255, 0, 0);   // OFF
+    	 WS2812_Send();
+    } else{
+    	WS2812_SetLED(13, 0, 0, 0); // Red
+    	WS2812_SetLED(14, 0, 0, 0);   // OFF
+    	WS2812_SetLED(15, 0, 0, 0);   // OFF
+    	WS2812_Send();
+    }
+    // Right
+    if(!HAL_GPIO_ReadPin (GPIOE, GPIO_PIN_0)){
+    	WS2812_SetLED(16, 255, 0, 0); // Red
+    	WS2812_SetLED(17, 255, 0, 0);   // OFF
+    	WS2812_SetLED(18, 255, 0, 0);   // OFF
+    	WS2812_Send();
+    } else{
+    	WS2812_SetLED(16, 0, 0, 0); // Red
+    	WS2812_SetLED(17, 0, 0, 0);   // OFF
+    	WS2812_SetLED(18, 0, 0, 0);   // OFF
+    	WS2812_Send();
     }
   }
   /* USER CODE END 3 */
@@ -702,10 +719,8 @@ static void MX_GPIO_Init(void)
 
   /*Configure GPIO pin : PB0 */
   GPIO_InitStruct.Pin = GPIO_PIN_0;
-  GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  GPIO_InitStruct.Alternate = GPIO_AF2_TIM3;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
   /*Configure GPIO pin : PB1 */
@@ -732,8 +747,8 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_PULLUP;
   HAL_GPIO_Init(GPIOG, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : PE9 */
-  GPIO_InitStruct.Pin = GPIO_PIN_9;
+  /*Configure GPIO pins : PE9 PE0 */
+  GPIO_InitStruct.Pin = GPIO_PIN_9|GPIO_PIN_0;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_PULLUP;
   HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
@@ -848,14 +863,6 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
   GPIO_InitStruct.Alternate = GPIO_AF4_I2C1;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
-
-  /*Configure GPIO pin : PE0 */
-  GPIO_InitStruct.Pin = GPIO_PIN_0;
-  GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  GPIO_InitStruct.Alternate = GPIO_AF2_TIM4;
-  HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
 
   /*Configure GPIO pin : PE1 */
   GPIO_InitStruct.Pin = GPIO_PIN_1;

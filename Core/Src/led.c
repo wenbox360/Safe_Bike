@@ -43,3 +43,10 @@ void WS2812_Send(void)
     HAL_Delay(1); // >50us reset
 }
 
+void ClearLED(void){
+	for(int i = 0; i < LED_COUNT; i++){
+		WS2812_SetLED(i, 0, 0, 0);
+	}
+	WS2812_Send();
+}
+
