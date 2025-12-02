@@ -29,6 +29,7 @@
 /* Private macro -------------------------------------------------------------*/
 /* USER CODE BEGIN PM */
 #define MIN(a,b) ((a) < (b) ? (a) : (b))
+#define PACKET_LEN 2000
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
@@ -44,7 +45,7 @@ TIM_HandleTypeDef htim1;
 /* USER CODE BEGIN PV */
 uint8_t test_buffer[3 * 5] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
 uint8_t response [7] = {0};
-uint8_t rx_buffer[4 * 1000] = {0};  // Triple buffer for continuous DMA
+uint8_t rx_buffer[4 * PACKET_LEN] = {0};  // Triple buffer for continuous DMA
 uint8_t copy_buffer[5] = {0};  // Triple buffer for continuous DMA
 uint8_t count = 0;
 //int count = 0;
@@ -52,6 +53,7 @@ bool startup = true;
 volatile uint8_t data_ready_k = 0xFF; // 0xFF = no data ready, 0-2 = which buffer is ready
 HAL_StatusTypeDef type = HAL_OK;
 bool ready_t = true;
+bool clear = false;
 
 bool zone_mode = false;
 bool filter_mode = false;
@@ -88,11 +90,11 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
     	if(startup){
     		// First callback is for the 7-byte response, now start 84-byte receptions
     		startup = false;
-    		HAL_UART_Receive_DMA(&huart1, rx_buffer + next_k * 1000, 1000);
+    		HAL_UART_Receive_DMA(&huart1, rx_buffer + next_k * PACKET_LEN, PACKET_LEN);
     	}
       else{
         data_ready_k = k;
-        HAL_UART_Receive_DMA(&huart1, rx_buffer + next_k * 1000, 1000);
+        HAL_UART_Receive_DMA(&huart1, rx_buffer + next_k * PACKET_LEN, PACKET_LEN);
       }
       // Rotate buffer indices for next iteration
     	k = next_k;
@@ -200,7 +202,10 @@ int main(void)
     /* USER CODE BEGIN 3 */
 
     if (data_ready_k != 0xFF) {
-      FillFrame(pingframe, 0x0000);
+      if(clear){
+    	  FillFrame(pingframe, 0x0000);
+      }
+      clear = !clear;
       uint8_t buffer_to_process = data_ready_k;
       data_ready_k = 0xFF;
 
@@ -210,8 +215,8 @@ int main(void)
       }
 
       // Process the buffer, accounting for potential shifts in decode_normal_scan
-      uint8_t* current_packet = rx_buffer + buffer_to_process * 1000;
-      uint8_t* buffer_end = current_packet + 1000; // End of the buffer
+      uint8_t* current_packet = rx_buffer + buffer_to_process * PACKET_LEN;
+      uint8_t* buffer_end = current_packet + PACKET_LEN; // End of the buffer
 
       while (current_packet + 5 <= buffer_end) { // Ensure at least 5 bytes remain
           if (decode_normal_scan(current_packet)) {

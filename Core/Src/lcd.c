@@ -232,11 +232,13 @@ void DrawZone(void) {
 
             if (count == 0 || (filter_mode && count <= 3)) {
                 continue; // Skip empty cells (leave black)
-            } else if (count == 1) {
-                color = colors[0];
-            } else if (count <= 3) {
-                color = colors[1];
-            } else if (count <= 6) {
+            }
+            //else if (count == 1) {
+//                color = colors[0];
+//            } else if (count <= 3) {
+//                color = colors[1];
+            //}
+             else if (count <= 6) {
                 color = colors[2];
             } else if (count <= 9) {
                 color = colors[3];
