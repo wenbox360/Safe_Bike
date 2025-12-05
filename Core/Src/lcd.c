@@ -443,8 +443,12 @@ void ILI9341_DisplayFrame(SPI_HandleTypeDef* hspi_addr) {
             DrawString("zone mode unfiltered");
         }
     } else {
-        DrawString("raw mode");
-    }
+    	if(filter_mode){
+    		DrawString("spread mode");
+    	} else {
+    		DrawString("raw mode");
+    		}
+    	}
     } else{
         DrawString("connection lost...");
     }

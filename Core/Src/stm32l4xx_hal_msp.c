@@ -160,7 +160,7 @@ void HAL_UART_MspInit(UART_HandleTypeDef* huart)
 
     /* USART1 DMA Init */
     /* USART1_RX Init */
-    hdma_usart1_rx.Instance = DMA1_Channel2;
+    hdma_usart1_rx.Instance = DMA1_Channel1;
     hdma_usart1_rx.Init.Request = DMA_REQUEST_USART1_RX;
     hdma_usart1_rx.Init.Direction = DMA_PERIPH_TO_MEMORY;
     hdma_usart1_rx.Init.PeriphInc = DMA_PINC_DISABLE;
@@ -438,7 +438,7 @@ void HAL_TIM_Base_MspInit(TIM_HandleTypeDef* htim_base)
 
     /* TIM3 DMA Init */
     /* TIM3_CH2 Init */
-    hdma_tim3_ch2.Instance = DMA1_Channel1;
+    hdma_tim3_ch2.Instance = DMA1_Channel2;
     hdma_tim3_ch2.Init.Request = DMA_REQUEST_TIM3_CH2;
     hdma_tim3_ch2.Init.Direction = DMA_MEMORY_TO_PERIPH;
     hdma_tim3_ch2.Init.PeriphInc = DMA_PINC_DISABLE;

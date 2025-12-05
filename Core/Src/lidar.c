@@ -10,6 +10,7 @@
 #include <stdio.h>
 
 extern bool zone_mode;
+extern bool filter_mode;
 
 int new_scan_flag = false;
 uint16_t* f = pingframe;
@@ -162,16 +163,28 @@ bool decode_normal_scan(uint8_t* capsule_data) {
     // process_angle(angle_raw);
     float angle = angle_raw / 64.0f;
 
+    if ((angle > BOUND1LOW && angle < BOUND1HIGH) || (angle > BOUND2LOW && angle < BOUND2HIGH)) {
+    	return true;
+	}
+
     uint16_t distance_raw = capsule_data[3] + (capsule_data[4] << 8);
     float distance_mm = distance_raw / 4.0f;
 
     if (quality >= MIN_SCAN_QUALITY) {
-        if (zone_mode) {
-        	coneZone(angle, distance_mm);
-            //UpdateZone(angle, distance_mm);
-        } else {
-            DrawPoint(angle, distance_mm);
-        }
+		UpdateZone(angle, distance_mm);
+        // if (zone_mode) {
+        // 	//coneZone(angle, distance_mm);
+        //     UpdateZone(angle, distance_mm);
+        // } else {
+		if (!zone_mode) {
+			if(filter_mode){
+				coneZone(angle, distance_mm);
+			}
+			else{	
+				DrawPoint(angle, distance_mm);
+			}
+		}
+        // }
     }
 
     return true; // Valid packet

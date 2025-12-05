@@ -14,6 +14,11 @@
 
 #define MIN_SCAN_QUALITY 10
 
+#define BOUND1LOW 150
+#define BOUND1HIGH 210
+#define BOUND2LOW 150
+#define BOUND2HIGH 210
+
 //float angle_diff(float angle1, float angle2);
 
 
