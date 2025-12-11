@@ -38,8 +38,6 @@ void WS2812_Send(void)
 {
     // Start DMA, use proper type
     HAL_TIM_PWM_Start_DMA(&htim3, TIM_CHANNEL_2, (uint32_t*)ws2812_buffer, LED_COUNT*24);
-
-
     HAL_Delay(1); // >50us reset
 }
 

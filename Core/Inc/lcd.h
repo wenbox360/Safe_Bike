@@ -73,7 +73,7 @@ extern uint16_t pingframe[WIDTH*HEIGHT]; // Full screen buffer
 extern uint16_t pongframe[WIDTH*HEIGHT]; // Full screen buffer
 extern uint16_t* f;
 
-extern int new_scan_flag; // Extract MSB of byte 3
+extern int new_scan_flag;
 
 
 

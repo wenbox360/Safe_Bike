@@ -104,50 +104,48 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
     static uint8_t next_k = 1;
 
     if (huart->Instance == USART1) {
-    	if(startup){
-    		// First callback is for the 7-byte response, now start 84-byte receptions
-    		startup = false;
-    		HAL_UART_Receive_DMA(&huart1, rx_buffer + next_k * LIDAR_BUFFER_SIZE, LIDAR_BUFFER_SIZE);
-    	}
-    	else{
-    	  data_ready_k = k;
-    	  HAL_UART_Receive_DMA(&huart1, rx_buffer + next_k * LIDAR_BUFFER_SIZE, LIDAR_BUFFER_SIZE);
-        }
+      if (startup) {
+        // First callback is for the 7-byte response, now start 84-byte receptions
+        startup = false;
+        HAL_UART_Receive_DMA(&huart1, rx_buffer + next_k * LIDAR_BUFFER_SIZE, LIDAR_BUFFER_SIZE);
+      } else {
+        data_ready_k = k;
+        HAL_UART_Receive_DMA(&huart1, rx_buffer + next_k * LIDAR_BUFFER_SIZE, LIDAR_BUFFER_SIZE);
+      }
       // Rotate buffer indices for next iteration
-    	k = next_k;
-    	next_k = (next_k + 1) % 4;
-    	count = 0;
+      k = next_k;
+      next_k = (next_k + 1) % 4;
+      count = 0;
     }
 }
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
     if (htim->Instance == TIM1) {
-        count++;
-        if(count == 30){
-            startup = true;
-            count = 0;
-        }
+      count++;
+      if (count == 30) {
+        startup = true;
+        count = 0;
+      }
     }
-    
-    if (htim->Instance == TIM2) {
-        HAL_GPIO_WritePin(GPIOD, GPIO_PIN_1, GPIO_PIN_RESET);
-        HAL_TIM_Base_Stop_IT(&htim2);
-        left_haptic_triggered = false;
 
+    if (htim->Instance == TIM2) {
+      HAL_GPIO_WritePin(GPIOD, GPIO_PIN_1, GPIO_PIN_RESET);
+      HAL_TIM_Base_Stop_IT(&htim2);
+      left_haptic_triggered = false;
     }
 
     if (htim->Instance == TIM4) {
-        HAL_GPIO_WritePin(GPIOG, GPIO_PIN_0, GPIO_PIN_RESET);
-        HAL_TIM_Base_Stop_IT(&htim4);
-        right_haptic_triggered = false;
+      HAL_GPIO_WritePin(GPIOG, GPIO_PIN_0, GPIO_PIN_RESET);
+      HAL_TIM_Base_Stop_IT(&htim4);
+      right_haptic_triggered = false;
     }
 
-    if(htim->Instance == TIM5){
-    	retry_conn = !retry_conn;
+    if (htim->Instance == TIM5) {
+      retry_conn = !retry_conn;
     }
 
-    if(htim->Instance == TIM8){
-    	led_state = !led_state;
+    if (htim->Instance == TIM8) {
+      led_state = !led_state;
     }
 }
 
@@ -241,182 +239,157 @@ int main(void)
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  while (1)
-  {
-    /* USER CODE END WHILE */
+    while (1) {
+      /* USER CODE END WHILE */
 
-    /* USER CODE BEGIN 3 */
+      /* USER CODE BEGIN 3 */
 
-    if (data_ready_k != 0xFF) {
-      FillFrame(pingframe, 0x0000);
-      uint8_t buffer_to_process = data_ready_k;
-      data_ready_k = 0xFF;
+      if (data_ready_k != 0xFF) {
+        FillFrame(pingframe, 0x0000);
+        uint8_t buffer_to_process = data_ready_k;
+        data_ready_k = 0xFF;
 
-      if (new_scan_flag) {
+        if (new_scan_flag) {
           memset(zone, 0, sizeof(zone));
           new_scan_flag = false;
-      }
+        }
 
-      // Process the buffer, accounting for potential shifts in decode_normal_scan
-      uint8_t* current_packet = rx_buffer + buffer_to_process * LIDAR_BUFFER_SIZE;
-      uint8_t* buffer_end = current_packet + LIDAR_BUFFER_SIZE; // End of the buffer
+        // Process the buffer, accounting for potential shifts in decode_normal_scan
+        uint8_t* current_packet = rx_buffer + buffer_to_process * LIDAR_BUFFER_SIZE;
+        uint8_t* buffer_end = current_packet + LIDAR_BUFFER_SIZE; // End of the buffer
 
-      while (current_packet + 5 <= buffer_end) { // Ensure at least 5 bytes remain
+        while (current_packet + 5 <= buffer_end) { // Ensure at least 5 bytes remain
           if (decode_normal_scan(current_packet)) {
-              current_packet += 5; // Move to the next packet only if valid
+            current_packet += 5; // Move to the next packet only if valid
           } else {
-              current_packet++; // Skip to the next byte for invalid packets
+            current_packet++; // Skip to the next byte for invalid packets
           }
-      }
+        }
 
-      for(int i = 0; i < GRID_DIM*GRID_DIM; i++){
-
-        if(zone_detected[i]){
-          if(zone_history[i] < 100){
+        for (int i = 0; i < GRID_DIM * GRID_DIM; i++) {
+          if (zone_detected[i]) {
+            if (zone_history[i] < 100) {
               zone_history[i] += 10;
-          }
-        }
-        else{
-          if(zone_history[i] > 0){
-              zone_history[i] -= 10;  // use faster decay to clear old detections
+            }
           } else {
-            zone_history[i] = 0;
+            if (zone_history[i] > 0) {
+              zone_history[i] -= 10;  // use faster decay to clear old detections
+            } else {
+              zone_history[i] = 0;
+            }
           }
         }
+        memset(zone_detected, 0, sizeof(zone_detected));
+
+        // TODO, depending on mode call function to add the description to the right mode to display on bottom of display
+
+        decoded++;
+        ILI9341_DisplayFrame(&hspi1);
+        displayed++;
       }
-      memset(zone_detected, 0, sizeof(zone_detected));
 
-      // TODO, depending on mode call function to add the description to the right mode to display on bottom of display
+      if (startup && retry_conn) {
+        memset(zone, 0, sizeof(zone));
+        memset(zone_history, 0, sizeof(zone_history));
+        memset(zone_detected, 0, sizeof(zone_detected));
+        __HAL_UART_CLEAR_IT(&huart1, UART_CLEAR_OREF);
+        // Start DMA reception ready for incoming data
+        HAL_UART_Receive_DMA(&huart1, rx_buffer, 7);
+        send_scan_command(&huart1);
+        ILI9341_DisplayFrame(&hspi1);
+      }
 
-      decoded++;
-      ILI9341_DisplayFrame(&hspi1);
-      displayed++;
-    }
+      // If read low, meaning pushed then start the corresponding mode
+      if (HAL_GPIO_ReadPin(GPIOE, GPIO_PIN_9)) {
+        zone_mode = false;
+      } else {
+        zone_mode = true;
+      }
 
-    if(startup && retry_conn){
-      // while (__HAL_UART_GET_FLAG(&huart1, UART_FLAG_RXNE)) {
-      //     volatile uint8_t dummy = huart1.Instance->RDR;
-      //   }
+      if (HAL_GPIO_ReadPin(GPIOF, GPIO_PIN_13)) {
+        filter_mode = false;
+      } else {
+        filter_mode = true;
+      }
+      // NOTE, THE GRIDS ARE FLIPPED ON THE Y AXIS COMPARED TO THE SCREEN, WE SHOULD DO FLIPPED ORIENTATION BELOW
+      // Left
 
-      // TODO check below
-      memset(zone, 0, sizeof(zone));
-      memset(zone_history, 0, sizeof(zone_history));
-      memset(zone_detected, 0, sizeof(zone_detected));
-      __HAL_UART_CLEAR_IT(&huart1,  UART_CLEAR_OREF);
-      // Start DMA reception ready for incoming data
-      HAL_UART_Receive_DMA(&huart1, rx_buffer, 7);
-      send_scan_command(&huart1);
-      ILI9341_DisplayFrame(&hspi1);
-    }
-
-    // If read low, meaning pushed then start the corresponding mode
-    if(HAL_GPIO_ReadPin (GPIOE, GPIO_PIN_9)){
-		  zone_mode = false;
-	  } else{
-		  zone_mode = true;
-	  }
-
-    if(HAL_GPIO_ReadPin (GPIOF, GPIO_PIN_13)){
-    	filter_mode = false;
-    } else{
-    	filter_mode = true;
-    }
-    // NOTE, THE GRIDS ARE FLIPPED ON THE Y AXIS COMPARED TO THE SCREEN, WE SHOULD DO FLIPPED ORIENTATION BELOW
-    // Left
-
-    if(!HAL_GPIO_ReadPin (GPIOE, GPIO_PIN_2)){
-      //HAL_GPIO_WritePin(GPIOA, GPIO_PIN_6, GPIO_PIN_SET);
-    	if(led_state){
-    		WS2812_SetLED(12, 255, 0, 0); // Red
-			WS2812_SetLED(13, 255, 0, 0);   // OFF
-			WS2812_SetLED(14, 255, 0, 0);   // OFF
-			WS2812_Send();
-    	} else{
-    		WS2812_SetLED(12, 0, 0, 0); // Red
-    		WS2812_SetLED(13, 0, 0, 0);   // OFF
-    		WS2812_SetLED(14, 0, 0, 0);   // OFF
-    		WS2812_Send();
-    	}
-       // Haptics
-       if(!left_haptic_triggered){
-
-//   	   HAL_GPIO_WritePin(GPIOD, GPIO_PIN_1, GPIO_PIN_SET);
-//   	   left_haptic_triggered = true;
-//   	   HAL_TIM_Base_Start_IT(&htim2);
-
-         bool triggered = false;
-         for(int i = GRID_DIM/4; i < 3*GRID_DIM/4; i++){
-         	for(int j = GRID_DIM/2; j < 3*GRID_DIM/4; j++){
- 			   if(zone_history[i * GRID_DIM +  j] > 0)
- 				 {
- 				  HAL_GPIO_WritePin(GPIOD, GPIO_PIN_1, GPIO_PIN_SET);
- //				  HAL_GPIO_WritePin(GPIOG, GPIO_PIN_0, GPIO_PIN_SET);
- 				  left_haptic_triggered = true;
- 				  HAL_TIM_Base_Start_IT(&htim2);
- //				  HAL_TIM_Base_Start_IT(&htim4);
- 				  triggered = true;
- 				  break;
- 				 }
-             }
-         	if (triggered){
-         		break;
-         	}
-           }
+      if (!HAL_GPIO_ReadPin(GPIOE, GPIO_PIN_2)) {
+        if (led_state) {
+          WS2812_SetLED(12, 255, 0, 0); // Red
+          WS2812_SetLED(13, 255, 0, 0);   // OFF
+          WS2812_SetLED(14, 255, 0, 0);   // OFF
+          WS2812_Send();
+        } else {
+          WS2812_SetLED(12, 0, 0, 0); // Red
+          WS2812_SetLED(13, 0, 0, 0);   // OFF
+          WS2812_SetLED(14, 0, 0, 0);   // OFF
+          WS2812_Send();
         }
-      //}
-    } else{
-    	WS2812_SetLED(12, 0, 0, 0); // Red
-    	WS2812_SetLED(13, 0, 0, 0);   // OFF
-    	WS2812_SetLED(14, 0, 0, 0);   // OFF
-    	WS2812_Send();
-    }
-    // Right
-    if(!HAL_GPIO_ReadPin (GPIOD, GPIO_PIN_7)){
-    	if(led_state){
-			WS2812_SetLED(15, 255, 0, 0); // Red
-			WS2812_SetLED(16, 255, 0, 0);   // OFF
-			WS2812_SetLED(17, 255, 0, 0);   // OFF
-			WS2812_Send();
-    	} else{
-    		WS2812_SetLED(15, 0, 0, 0); // Red
-			WS2812_SetLED(16, 0, 0, 0);   // OFF
-			WS2812_SetLED(17, 0, 0, 0);   // OFF
-			WS2812_Send();
-    	}
-      // Haptics
+        // Haptics
+        if (!left_haptic_triggered) {
 
-       if(!right_haptic_triggered){
-
-//    	   HAL_GPIO_WritePin(GPIOG, GPIO_PIN_0, GPIO_PIN_SET);
-//         right_haptic_triggered = true;
-//         HAL_TIM_Base_Start_IT(&htim4);
-
-    	   bool triggered = false;
-    	   for(int i = GRID_DIM/4; i < 3*GRID_DIM/4; i++){
-    	           	for(int j = GRID_DIM/4; j < GRID_DIM/2; j++){
-    	   			   if(zone_history[i * GRID_DIM + j] > 0)
-    	   				 {
-    	   				  HAL_GPIO_WritePin(GPIOG, GPIO_PIN_0, GPIO_PIN_SET);
-    	   				  right_haptic_triggered = true;
-    	   				  HAL_TIM_Base_Start_IT(&htim4);
-    	   				  triggered = true;
-    	   				  break;
-    	   				 }
-    	               }
-    	           	if (triggered){
-    	           		break;
-    	           	}
-    	         //    }
-    	   	 }
+          bool triggered = false;
+          for (int i = GRID_DIM / 4; i < 3 * GRID_DIM / 4; i++) {
+            for (int j = GRID_DIM / 2; j < 3 * GRID_DIM / 4; j++) {
+              if (zone_history[i * GRID_DIM + j] > 0) {
+                HAL_GPIO_WritePin(GPIOD, GPIO_PIN_1, GPIO_PIN_SET);
+                left_haptic_triggered = true;
+                HAL_TIM_Base_Start_IT(&htim2);
+                triggered = true;
+                break;
+              }
+            }
+            if (triggered) {
+              break;
+            }
+          }
         }
+      } else {
+        WS2812_SetLED(12, 0, 0, 0); // Red
+        WS2812_SetLED(13, 0, 0, 0);   // OFF
+        WS2812_SetLED(14, 0, 0, 0);   // OFF
+        WS2812_Send();
+      }
+      // Right
+      if (!HAL_GPIO_ReadPin(GPIOD, GPIO_PIN_7)) {
+        if (led_state) {
+          WS2812_SetLED(15, 255, 0, 0); // Red
+          WS2812_SetLED(16, 255, 0, 0);   // OFF
+          WS2812_SetLED(17, 255, 0, 0);   // OFF
+          WS2812_Send();
+        } else {
+          WS2812_SetLED(15, 0, 0, 0); // Red
+          WS2812_SetLED(16, 0, 0, 0);   // OFF
+          WS2812_SetLED(17, 0, 0, 0);   // OFF
+          WS2812_Send();
+        }
+        // Haptics
+        if (!right_haptic_triggered) {
 
-    } else{
-    	WS2812_SetLED(15, 0, 0, 0); // Red
-    	WS2812_SetLED(16, 0, 0, 0);   // OFF
-    	WS2812_SetLED(17, 0, 0, 0);   // OFF
-    	WS2812_Send();
+          bool triggered = false;
+          for (int i = GRID_DIM / 4; i < 3 * GRID_DIM / 4; i++) {
+            for (int j = GRID_DIM / 4; j < GRID_DIM / 2; j++) {
+              if (zone_history[i * GRID_DIM + j] > 0) {
+                HAL_GPIO_WritePin(GPIOG, GPIO_PIN_0, GPIO_PIN_SET);
+                right_haptic_triggered = true;
+                HAL_TIM_Base_Start_IT(&htim4);
+                triggered = true;
+                break;
+              }
+            }
+            if (triggered) {
+              break;
+            }
+          }
+        }
+      } else {
+        WS2812_SetLED(15, 0, 0, 0); // Red
+        WS2812_SetLED(16, 0, 0, 0);   // OFF
+        WS2812_SetLED(17, 0, 0, 0);   // OFF
+        WS2812_Send();
+      }
     }
-  }
   /* USER CODE END 3 */
 }
 
