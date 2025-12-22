@@ -1,16 +1,3 @@
-/*
-
- * lcd.c
-
- *
-
- *  Created on: Nov 20, 2025
-
- *      Author: darrendong
-
- */
-
-
 
 #include "lcd.h"
 #include <stdio.h>
@@ -135,6 +122,8 @@ void DrawPoint(float angle, float dist){
 
     // Clamp distance to screen bounds
     if (distance_pixels > MAX_RADIUS) {
+    	//SKIP for now
+    	return;
         distance_pixels = MAX_RADIUS;
     }
 
@@ -165,6 +154,54 @@ void DrawPoint(float angle, float dist){
 
 }
 
+void coneZone(float angle, float dist){
+    uint16_t color = 0x001F; // pure blue
+    uint8_t OFFSET = 120;    // center of screen
+
+
+    // Ignore invalid distances
+    if (dist <= 0 || dist > MAX_DIST * 2) {
+        return;
+    }
+
+    int distance_pixels = dist * MAX_RADIUS / MAX_DIST; // scale to screen
+
+    // Clamp distance to screen bounds
+    if (distance_pixels > MAX_RADIUS) {
+        //SKIP for now
+        return;
+        distance_pixels = MAX_RADIUS;
+    }
+
+    for (int i = distance_pixels; i <= MAX_RADIUS; i++){
+
+        int x = OFFSET + i * sin(angle * M_PI / 180.0); // flip x-axis
+
+        int y = OFFSET + i * cos(angle * M_PI / 180.0); // y downward
+
+        // Bounds check: must leave room for 3x3 block (1 pixel margin on each side)
+        if (x < 1 || x >= WIDTH - 1 || y < 1 || y >= HEIGHT - 1) {
+            return;
+        }
+
+        // Verify buffer pointer is valid
+        if (f == NULL) {
+            return;
+        }
+
+        // draw a 3x3 pixel block (now safe because we checked bounds above)
+        f[y*WIDTH + x] = color;
+        f[y*WIDTH + x + 1] = color;
+        f[y*WIDTH + x - 1] = color;
+        f[(y - 1)*WIDTH + x] = color;
+        f[(y + 1)*WIDTH + x] = color;
+        f[(y - 1)*WIDTH + x - 1] = color;
+        f[(y - 1)*WIDTH + x + 1] = color;
+        f[(y + 1)*WIDTH + x - 1] = color;
+        f[(y + 1)*WIDTH + x + 1] = color;
+    }
+}
+
 void UpdateZone(float angle, float dist) {
     uint8_t OFFSET = 120;    // center of screen (same as DrawPoint)
 
@@ -175,6 +212,8 @@ void UpdateZone(float angle, float dist) {
 
     // Clamp distance to screen bounds
     if (distance_pixels > MAX_RADIUS) {
+    	//SKIP for now
+    	return;
         distance_pixels = MAX_RADIUS;
     }
 
@@ -197,9 +236,9 @@ void UpdateZone(float angle, float dist) {
     uint8_t idx = cell_y * GRID_DIM + cell_x;
     if (zone[idx] < 255) zone[idx]++; // Prevent overflow
 
-    if(filter_mode){
-        zone_detected[idx] = true;
-    }
+    //if(filter_mode){
+    zone_detected[idx] = true;
+    //}
 }
 
 void DrawZone(void) {
@@ -232,13 +271,11 @@ void DrawZone(void) {
 
             if (count == 0 || (filter_mode && count <= 3)) {
                 continue; // Skip empty cells (leave black)
-            }
-            //else if (count == 1) {
-//                color = colors[0];
-//            } else if (count <= 3) {
-//                color = colors[1];
-            //}
-             else if (count <= 6) {
+            } else if (count == 1) {
+                color = colors[0];
+            } else if (count <= 3) {
+                color = colors[1];
+            } else if (count <= 6) {
                 color = colors[2];
             } else if (count <= 9) {
                 color = colors[3];
@@ -405,8 +442,12 @@ void ILI9341_DisplayFrame(SPI_HandleTypeDef* hspi_addr) {
             DrawString("zone mode unfiltered");
         }
     } else {
-        DrawString("raw mode");
-    }
+    	if(filter_mode){
+    		DrawString("spread mode");
+    	} else {
+    		DrawString("raw mode");
+    		}
+    	}
     } else{
         DrawString("connection lost...");
     }

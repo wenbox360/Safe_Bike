@@ -73,7 +73,7 @@ extern uint16_t pingframe[WIDTH*HEIGHT]; // Full screen buffer
 extern uint16_t pongframe[WIDTH*HEIGHT]; // Full screen buffer
 extern uint16_t* f;
 
-extern int new_scan_flag; // Extract MSB of byte 3
+extern int new_scan_flag;
 
 
 
@@ -87,6 +87,7 @@ void DrawZone(void);
 
 void UpdateZone(float angle, float dist);
 
+void coneZone(float angle, float dist);
 
 
 void WriteCommand(uint8_t cmd, SPI_HandleTypeDef* hspi_addr);

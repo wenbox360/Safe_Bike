@@ -11,6 +11,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "led.h"
 #include "lidar.h"
 #include "stdio.h"
 #include "lcd.h"
@@ -29,7 +30,7 @@
 /* Private macro -------------------------------------------------------------*/
 /* USER CODE BEGIN PM */
 #define MIN(a,b) ((a) < (b) ? (a) : (b))
-#define PACKET_LEN 2000
+#define LIDAR_BUFFER_SIZE 2000
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
@@ -41,24 +42,35 @@ DMA_HandleTypeDef hdma_usart1_rx;
 SPI_HandleTypeDef hspi1;
 
 TIM_HandleTypeDef htim1;
+TIM_HandleTypeDef htim2;
+TIM_HandleTypeDef htim3;
+TIM_HandleTypeDef htim4;
+TIM_HandleTypeDef htim5;
+TIM_HandleTypeDef htim8;
+DMA_HandleTypeDef hdma_tim3_ch2;
 
 /* USER CODE BEGIN PV */
 uint8_t test_buffer[3 * 5] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
 uint8_t response [7] = {0};
-uint8_t rx_buffer[4 * PACKET_LEN] = {0};  // Triple buffer for continuous DMA
+uint8_t rx_buffer[4 * LIDAR_BUFFER_SIZE] = {0};  // Triple buffer for continuous DMA
 uint8_t copy_buffer[5] = {0};  // Triple buffer for continuous DMA
 uint8_t count = 0;
 //int count = 0;
 bool startup = true;
+bool clear = false;
 volatile uint8_t data_ready_k = 0xFF; // 0xFF = no data ready, 0-2 = which buffer is ready
 HAL_StatusTypeDef type = HAL_OK;
 bool ready_t = true;
-bool clear = false;
-
+bool retry_conn = true;
 bool zone_mode = false;
 bool filter_mode = false;
+bool led_state = true;
 extern bool zone_detected[GRID_DIM*GRID_DIM];
 extern uint16_t zone_history[GRID_DIM*GRID_DIM];
+
+bool right_haptic_triggered = false;
+bool left_haptic_triggered = false;
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -70,6 +82,11 @@ static void MX_USART1_UART_Init(void);
 static void MX_USART3_UART_Init(void);
 static void MX_LPUART1_UART_Init(void);
 static void MX_TIM1_Init(void);
+static void MX_TIM2_Init(void);
+static void MX_TIM3_Init(void);
+static void MX_TIM4_Init(void);
+static void MX_TIM5_Init(void);
+static void MX_TIM8_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -87,29 +104,48 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
     static uint8_t next_k = 1;
 
     if (huart->Instance == USART1) {
-    	if(startup){
-    		// First callback is for the 7-byte response, now start 84-byte receptions
-    		startup = false;
-    		HAL_UART_Receive_DMA(&huart1, rx_buffer + next_k * PACKET_LEN, PACKET_LEN);
-    	}
-      else{
+      if (startup) {
+        // First callback is for the 7-byte response, now start 84-byte receptions
+        startup = false;
+        HAL_UART_Receive_DMA(&huart1, rx_buffer + next_k * LIDAR_BUFFER_SIZE, LIDAR_BUFFER_SIZE);
+      } else {
         data_ready_k = k;
-        HAL_UART_Receive_DMA(&huart1, rx_buffer + next_k * PACKET_LEN, PACKET_LEN);
+        HAL_UART_Receive_DMA(&huart1, rx_buffer + next_k * LIDAR_BUFFER_SIZE, LIDAR_BUFFER_SIZE);
       }
       // Rotate buffer indices for next iteration
-    	k = next_k;
-    	next_k = (next_k + 1) % 4;
+      k = next_k;
+      next_k = (next_k + 1) % 4;
       count = 0;
     }
 }
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
     if (htim->Instance == TIM1) {
-        count++;
-        if(count == 30){
-            startup = true;
-            count = 0;
-        }
+      count++;
+      if (count == 30) {
+        startup = true;
+        count = 0;
+      }
+    }
+
+    if (htim->Instance == TIM2) {
+      HAL_GPIO_WritePin(GPIOD, GPIO_PIN_1, GPIO_PIN_RESET);
+      HAL_TIM_Base_Stop_IT(&htim2);
+      left_haptic_triggered = false;
+    }
+
+    if (htim->Instance == TIM4) {
+      HAL_GPIO_WritePin(GPIOG, GPIO_PIN_0, GPIO_PIN_RESET);
+      HAL_TIM_Base_Stop_IT(&htim4);
+      right_haptic_triggered = false;
+    }
+
+    if (htim->Instance == TIM5) {
+      retry_conn = !retry_conn;
+    }
+
+    if (htim->Instance == TIM8) {
+      led_state = !led_state;
     }
 }
 
@@ -150,10 +186,16 @@ int main(void)
   MX_USART3_UART_Init();
   MX_LPUART1_UART_Init();
   MX_TIM1_Init();
+  MX_TIM2_Init();
+  MX_TIM3_Init();
+  MX_TIM4_Init();
+  MX_TIM5_Init();
+  MX_TIM8_Init();
   /* USER CODE BEGIN 2 */
   HAL_Delay(1000); // Sleep out
   ILI9341_Reset();
   HAL_Delay(1000); // Sleep out
+  ClearLED();
 
   WriteCommand(0x11, &hspi1);
   HAL_Delay(120); // Sleep out
@@ -167,6 +209,7 @@ int main(void)
   HAL_Delay(20);
 
   ILI9341_DisplayFrame(&hspi1);
+  HAL_Delay(500);
 
   send_stop_command(&huart1);
   //__HAL_UART_CLEAR_OREFLAG(&huart1);
@@ -188,93 +231,165 @@ int main(void)
   // Send the express scan command
   send_scan_command(&huart1);
   HAL_TIM_Base_Start_IT(&htim1);
-
+  HAL_TIM_Base_Start_IT(&htim5);
+  HAL_TIM_Base_Start_IT(&htim8);
 
 
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  while (1)
-  {
+    while (1) {
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
 
-    if (data_ready_k != 0xFF) {
-      if(clear){
-    	  FillFrame(pingframe, 0x0000);
-      }
-      clear = !clear;
-      uint8_t buffer_to_process = data_ready_k;
-      data_ready_k = 0xFF;
+      if (data_ready_k != 0xFF) {
+        FillFrame(pingframe, 0x0000);
+        uint8_t buffer_to_process = data_ready_k;
+        data_ready_k = 0xFF;
 
-      if (new_scan_flag) {
+        if (new_scan_flag) {
           memset(zone, 0, sizeof(zone));
           new_scan_flag = false;
-      }
+        }
 
-      // Process the buffer, accounting for potential shifts in decode_normal_scan
-      uint8_t* current_packet = rx_buffer + buffer_to_process * PACKET_LEN;
-      uint8_t* buffer_end = current_packet + PACKET_LEN; // End of the buffer
+        // Process the buffer, accounting for potential shifts in decode_normal_scan
+        uint8_t* current_packet = rx_buffer + buffer_to_process * LIDAR_BUFFER_SIZE;
+        uint8_t* buffer_end = current_packet + LIDAR_BUFFER_SIZE; // End of the buffer
 
-      while (current_packet + 5 <= buffer_end) { // Ensure at least 5 bytes remain
+        while (current_packet + 5 <= buffer_end) { // Ensure at least 5 bytes remain
           if (decode_normal_scan(current_packet)) {
-              current_packet += 5; // Move to the next packet only if valid
+            current_packet += 5; // Move to the next packet only if valid
           } else {
-              current_packet++; // Skip to the next byte for invalid packets
-          }
-      }
-
-      for(int i = 0; i < GRID_DIM*GRID_DIM; i++){
-
-        if(zone_detected[i]){
-          if(zone_history[i] < 100){
-              zone_history[i] += 10; 
+            current_packet++; // Skip to the next byte for invalid packets
           }
         }
-        else{
-          if(zone_history[i] > 0){
+
+        for (int i = 0; i < GRID_DIM * GRID_DIM; i++) {
+          if (zone_detected[i]) {
+            if (zone_history[i] < 100) {
+              zone_history[i] += 10;
+            }
+          } else {
+            if (zone_history[i] > 0) {
               zone_history[i] -= 10;  // use faster decay to clear old detections
-          } else {
-            zone_history[i] = 0;  
+            } else {
+              zone_history[i] = 0;
+            }
           }
         }
+        memset(zone_detected, 0, sizeof(zone_detected));
+
+        // TODO, depending on mode call function to add the description to the right mode to display on bottom of display
+
+        decoded++;
+        ILI9341_DisplayFrame(&hspi1);
+        displayed++;
       }
-      memset(zone_detected, 0, sizeof(zone_detected)); 
 
-      // TODO, depending on mode call function to add the description to the right mode to display on bottom of display
+      if (startup && retry_conn) {
+        memset(zone, 0, sizeof(zone));
+        memset(zone_history, 0, sizeof(zone_history));
+        memset(zone_detected, 0, sizeof(zone_detected));
+        __HAL_UART_CLEAR_IT(&huart1, UART_CLEAR_OREF);
+        // Start DMA reception ready for incoming data
+        HAL_UART_Receive_DMA(&huart1, rx_buffer, 7);
+        send_scan_command(&huart1);
+        ILI9341_DisplayFrame(&hspi1);
+      }
 
-      decoded++;
-      ILI9341_DisplayFrame(&hspi1);
-      displayed++;
+      // If read low, meaning pushed then start the corresponding mode
+      if (HAL_GPIO_ReadPin(GPIOE, GPIO_PIN_9)) {
+        zone_mode = false;
+      } else {
+        zone_mode = true;
+      }
+
+      if (HAL_GPIO_ReadPin(GPIOF, GPIO_PIN_13)) {
+        filter_mode = false;
+      } else {
+        filter_mode = true;
+      }
+      // NOTE, THE GRIDS ARE FLIPPED ON THE Y AXIS COMPARED TO THE SCREEN, WE SHOULD DO FLIPPED ORIENTATION BELOW
+      // Left
+
+      if (!HAL_GPIO_ReadPin(GPIOE, GPIO_PIN_2)) {
+        if (led_state) {
+          WS2812_SetLED(12, 255, 0, 0); // Red
+          WS2812_SetLED(13, 255, 0, 0);   // OFF
+          WS2812_SetLED(14, 255, 0, 0);   // OFF
+          WS2812_Send();
+        } else {
+          WS2812_SetLED(12, 0, 0, 0); // Red
+          WS2812_SetLED(13, 0, 0, 0);   // OFF
+          WS2812_SetLED(14, 0, 0, 0);   // OFF
+          WS2812_Send();
+        }
+        // Haptics
+        if (!left_haptic_triggered) {
+
+          bool triggered = false;
+          for (int i = GRID_DIM / 4; i < 3 * GRID_DIM / 4; i++) {
+            for (int j = GRID_DIM / 2; j < 3 * GRID_DIM / 4; j++) {
+              if (zone_history[i * GRID_DIM + j] > 0) {
+                HAL_GPIO_WritePin(GPIOD, GPIO_PIN_1, GPIO_PIN_SET);
+                left_haptic_triggered = true;
+                HAL_TIM_Base_Start_IT(&htim2);
+                triggered = true;
+                break;
+              }
+            }
+            if (triggered) {
+              break;
+            }
+          }
+        }
+      } else {
+        WS2812_SetLED(12, 0, 0, 0); // Red
+        WS2812_SetLED(13, 0, 0, 0);   // OFF
+        WS2812_SetLED(14, 0, 0, 0);   // OFF
+        WS2812_Send();
+      }
+      // Right
+      if (!HAL_GPIO_ReadPin(GPIOD, GPIO_PIN_7)) {
+        if (led_state) {
+          WS2812_SetLED(15, 255, 0, 0); // Red
+          WS2812_SetLED(16, 255, 0, 0);   // OFF
+          WS2812_SetLED(17, 255, 0, 0);   // OFF
+          WS2812_Send();
+        } else {
+          WS2812_SetLED(15, 0, 0, 0); // Red
+          WS2812_SetLED(16, 0, 0, 0);   // OFF
+          WS2812_SetLED(17, 0, 0, 0);   // OFF
+          WS2812_Send();
+        }
+        // Haptics
+        if (!right_haptic_triggered) {
+
+          bool triggered = false;
+          for (int i = GRID_DIM / 4; i < 3 * GRID_DIM / 4; i++) {
+            for (int j = GRID_DIM / 4; j < GRID_DIM / 2; j++) {
+              if (zone_history[i * GRID_DIM + j] > 0) {
+                HAL_GPIO_WritePin(GPIOG, GPIO_PIN_0, GPIO_PIN_SET);
+                right_haptic_triggered = true;
+                HAL_TIM_Base_Start_IT(&htim4);
+                triggered = true;
+                break;
+              }
+            }
+            if (triggered) {
+              break;
+            }
+          }
+        }
+      } else {
+        WS2812_SetLED(15, 0, 0, 0); // Red
+        WS2812_SetLED(16, 0, 0, 0);   // OFF
+        WS2812_SetLED(17, 0, 0, 0);   // OFF
+        WS2812_Send();
+      }
     }
-
-    if(startup){
-      // while (__HAL_UART_GET_FLAG(&huart1, UART_FLAG_RXNE)) {
-      //     volatile uint8_t dummy = huart1.Instance->RDR;
-      //   }
-      __HAL_UART_CLEAR_IT(&huart1,  UART_CLEAR_OREF);
-      // Start DMA reception ready for incoming data
-      HAL_UART_Receive_DMA(&huart1, rx_buffer, 7);
-      send_scan_command(&huart1);
-      ILI9341_DisplayFrame(&hspi1);
-      HAL_Delay(2000);
-    }
-
-    // If read low, meaning pushed then start the corresponding mode
-    if(HAL_GPIO_ReadPin (GPIOE, GPIO_PIN_9)){
-		  zone_mode = false;
-	  } else{
-		  zone_mode = true;
-	  }
-
-    if(HAL_GPIO_ReadPin (GPIOF, GPIO_PIN_13)){
-    	filter_mode = false;
-    } else{
-    	filter_mode = true;
-    }
-  }
   /* USER CODE END 3 */
 }
 
@@ -560,6 +675,247 @@ static void MX_TIM1_Init(void)
 }
 
 /**
+  * @brief TIM2 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM2_Init(void)
+{
+
+  /* USER CODE BEGIN TIM2_Init 0 */
+
+  /* USER CODE END TIM2_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM2_Init 1 */
+
+  /* USER CODE END TIM2_Init 1 */
+  htim2.Instance = TIM2;
+  htim2.Init.Prescaler = 2000;
+  htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim2.Init.Period = 65535;
+  htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim2, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim2, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM2_Init 2 */
+
+  /* USER CODE END TIM2_Init 2 */
+
+}
+
+/**
+  * @brief TIM3 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM3_Init(void)
+{
+
+  /* USER CODE BEGIN TIM3_Init 0 */
+
+  /* USER CODE END TIM3_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+  TIM_OC_InitTypeDef sConfigOC = {0};
+
+  /* USER CODE BEGIN TIM3_Init 1 */
+
+  /* USER CODE END TIM3_Init 1 */
+  htim3.Instance = TIM3;
+  htim3.Init.Prescaler = 0;
+  htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim3.Init.Period = 99;
+  htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim3) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim3, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_TIM_PWM_Init(&htim3) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim3, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sConfigOC.OCMode = TIM_OCMODE_PWM1;
+  sConfigOC.Pulse = 0;
+  sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
+  sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
+  if (HAL_TIM_PWM_ConfigChannel(&htim3, &sConfigOC, TIM_CHANNEL_2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM3_Init 2 */
+
+  /* USER CODE END TIM3_Init 2 */
+  HAL_TIM_MspPostInit(&htim3);
+
+}
+
+/**
+  * @brief TIM4 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM4_Init(void)
+{
+
+  /* USER CODE BEGIN TIM4_Init 0 */
+
+  /* USER CODE END TIM4_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM4_Init 1 */
+
+  /* USER CODE END TIM4_Init 1 */
+  htim4.Instance = TIM4;
+  htim4.Init.Prescaler = 2000;
+  htim4.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim4.Init.Period = 65535;
+  htim4.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim4.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim4) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim4, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim4, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM4_Init 2 */
+
+  /* USER CODE END TIM4_Init 2 */
+
+}
+
+/**
+  * @brief TIM5 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM5_Init(void)
+{
+
+  /* USER CODE BEGIN TIM5_Init 0 */
+
+  /* USER CODE END TIM5_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM5_Init 1 */
+
+  /* USER CODE END TIM5_Init 1 */
+  htim5.Instance = TIM5;
+  htim5.Init.Prescaler = 3000;
+  htim5.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim5.Init.Period = 65000;
+  htim5.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim5.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim5) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim5, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim5, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM5_Init 2 */
+
+  /* USER CODE END TIM5_Init 2 */
+
+}
+
+/**
+  * @brief TIM8 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM8_Init(void)
+{
+
+  /* USER CODE BEGIN TIM8_Init 0 */
+
+  /* USER CODE END TIM8_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM8_Init 1 */
+
+  /* USER CODE END TIM8_Init 1 */
+  htim8.Instance = TIM8;
+  htim8.Init.Prescaler = 800;
+  htim8.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim8.Init.Period = 65535;
+  htim8.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim8.Init.RepetitionCounter = 0;
+  htim8.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim8) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim8, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterOutputTrigger2 = TIM_TRGO2_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim8, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM8_Init 2 */
+
+  /* USER CODE END TIM8_Init 2 */
+
+}
+
+/**
   * Enable DMA controller clock
   */
 static void MX_DMA_Init(void)
@@ -573,6 +929,9 @@ static void MX_DMA_Init(void)
   /* DMA1_Channel1_IRQn interrupt configuration */
   HAL_NVIC_SetPriority(DMA1_Channel1_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(DMA1_Channel1_IRQn);
+  /* DMA1_Channel2_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Channel2_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Channel2_IRQn);
 
 }
 
@@ -600,10 +959,25 @@ static void MX_GPIO_Init(void)
   HAL_PWREx_EnableVddIO2();
 
   /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_6, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(GPIOG, GPIO_PIN_0, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOE, GPIO_PIN_10|GPIO_PIN_11|GPIO_PIN_12, GPIO_PIN_RESET);
 
-  /*Configure GPIO pins : PE2 PE3 */
-  GPIO_InitStruct.Pin = GPIO_PIN_2|GPIO_PIN_3;
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(GPIOD, GPIO_PIN_12|GPIO_PIN_1, GPIO_PIN_RESET);
+
+  /*Configure GPIO pins : PE2 PE9 PE0 */
+  GPIO_InitStruct.Pin = GPIO_PIN_2|GPIO_PIN_9|GPIO_PIN_0;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : PE3 */
+  GPIO_InitStruct.Pin = GPIO_PIN_3;
   GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
@@ -634,27 +1008,18 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : PA0 */
-  GPIO_InitStruct.Pin = GPIO_PIN_0;
-  GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  GPIO_InitStruct.Alternate = GPIO_AF1_TIM2;
-  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
-
   /*Configure GPIO pins : PA1 PA3 */
   GPIO_InitStruct.Pin = GPIO_PIN_1|GPIO_PIN_3;
   GPIO_InitStruct.Mode = GPIO_MODE_ANALOG_ADC_CONTROL;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : PB0 */
-  GPIO_InitStruct.Pin = GPIO_PIN_0;
-  GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
+  /*Configure GPIO pin : PA6 */
+  GPIO_InitStruct.Pin = GPIO_PIN_6;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  GPIO_InitStruct.Alternate = GPIO_AF2_TIM3;
-  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
   /*Configure GPIO pin : PB1 */
   GPIO_InitStruct.Pin = GPIO_PIN_1;
@@ -676,15 +1041,10 @@ static void MX_GPIO_Init(void)
 
   /*Configure GPIO pin : PG0 */
   GPIO_InitStruct.Pin = GPIO_PIN_0;
-  GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
-  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOG, &GPIO_InitStruct);
-
-  /*Configure GPIO pin : PE9 */
-  GPIO_InitStruct.Pin = GPIO_PIN_9;
-  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-  GPIO_InitStruct.Pull = GPIO_PULLUP;
-  HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
 
   /*Configure GPIO pins : PE10 PE11 PE12 */
   GPIO_InitStruct.Pin = GPIO_PIN_10|GPIO_PIN_11|GPIO_PIN_12;
@@ -692,14 +1052,6 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
-
-  /*Configure GPIO pin : PB10 */
-  GPIO_InitStruct.Pin = GPIO_PIN_10;
-  GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  GPIO_InitStruct.Alternate = GPIO_AF1_TIM2;
-  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
   /*Configure GPIO pins : PB12 PB13 PB15 */
   GPIO_InitStruct.Pin = GPIO_PIN_12|GPIO_PIN_13|GPIO_PIN_15;
@@ -717,12 +1069,11 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Alternate = GPIO_AF14_TIM15;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : PD14 PD15 */
-  GPIO_InitStruct.Pin = GPIO_PIN_14|GPIO_PIN_15;
-  GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
+  /*Configure GPIO pins : PD12 PD1 */
+  GPIO_InitStruct.Pin = GPIO_PIN_12|GPIO_PIN_1;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  GPIO_InitStruct.Alternate = GPIO_AF2_TIM4;
   HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
 
   /*Configure GPIO pin : PC6 */
@@ -731,14 +1082,6 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   GPIO_InitStruct.Alternate = GPIO_AF13_SAI2;
-  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
-
-  /*Configure GPIO pin : PC7 */
-  GPIO_InitStruct.Pin = GPIO_PIN_7;
-  GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  GPIO_InitStruct.Alternate = GPIO_AF2_TIM3;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
   /*Configure GPIO pins : PC8 PC9 PC10 PC11
@@ -789,6 +1132,12 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Alternate = GPIO_AF7_USART2;
   HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
 
+  /*Configure GPIO pin : PD7 */
+  GPIO_InitStruct.Pin = GPIO_PIN_7;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
+
   /*Configure GPIO pins : PB3 PB4 PB5 */
   GPIO_InitStruct.Pin = GPIO_PIN_3|GPIO_PIN_4|GPIO_PIN_5;
   GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
@@ -805,23 +1154,15 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Alternate = GPIO_AF4_I2C1;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : PE0 */
-  GPIO_InitStruct.Pin = GPIO_PIN_0;
-  GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  GPIO_InitStruct.Alternate = GPIO_AF2_TIM4;
-  HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
-
   /*Configure GPIO pin : PE1 */
   GPIO_InitStruct.Pin = GPIO_PIN_1;
-  GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING_FALLING;
   GPIO_InitStruct.Pull = GPIO_PULLUP;
   HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
 
   /* EXTI interrupt init*/
-  HAL_NVIC_SetPriority(EXTI0_IRQn, 0, 0);
-  HAL_NVIC_EnableIRQ(EXTI0_IRQn);
+  HAL_NVIC_SetPriority(EXTI1_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI1_IRQn);
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 
