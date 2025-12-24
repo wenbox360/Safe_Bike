@@ -50,45 +50,40 @@ TIM_HandleTypeDef htim5;
 TIM_HandleTypeDef htim8;
 DMA_HandleTypeDef hdma_tim3_ch2;
 
-/* Definitions for defaultTask */
-osThreadId_t defaultTaskHandle;
-const osThreadAttr_t defaultTask_attributes = {
-  .name = "defaultTask",
+/* Definitions for LiDARDataTask */
+osThreadId_t LiDARDataTaskHandle;
+const osThreadAttr_t LiDARDataTask_attributes = {
+  .name = "LiDARDataTask",
   .stack_size = 128 * 4,
   .priority = (osPriority_t) osPriorityNormal,
 };
-/* Definitions for myTask02 */
-osThreadId_t myTask02Handle;
-const osThreadAttr_t myTask02_attributes = {
-  .name = "myTask02",
+/* Definitions for HapticsTask */
+osThreadId_t HapticsTaskHandle;
+const osThreadAttr_t HapticsTask_attributes = {
+  .name = "HapticsTask",
   .stack_size = 128 * 4,
   .priority = (osPriority_t) osPriorityNormal,
 };
-/* Definitions for myTask03 */
-osThreadId_t myTask03Handle;
-const osThreadAttr_t myTask03_attributes = {
-  .name = "myTask03",
+/* Definitions for LED */
+osThreadId_t LEDHandle;
+const osThreadAttr_t LED_attributes = {
+  .name = "LED",
   .stack_size = 128 * 4,
   .priority = (osPriority_t) osPriorityBelowNormal7,
 };
-/* Definitions for myTask04 */
-osThreadId_t myTask04Handle;
-const osThreadAttr_t myTask04_attributes = {
-  .name = "myTask04",
+/* Definitions for RetryConnection */
+osThreadId_t RetryConnectionHandle;
+const osThreadAttr_t RetryConnection_attributes = {
+  .name = "RetryConnection",
   .stack_size = 128 * 4,
   .priority = (osPriority_t) osPriorityNormal1,
 };
-/* Definitions for myTask05 */
-osThreadId_t myTask05Handle;
-const osThreadAttr_t myTask05_attributes = {
-  .name = "myTask05",
+/* Definitions for ChangeModes */
+osThreadId_t ChangeModesHandle;
+const osThreadAttr_t ChangeModes_attributes = {
+  .name = "ChangeModes",
   .stack_size = 128 * 4,
   .priority = (osPriority_t) osPriorityLow,
-};
-/* Definitions for myQueue01 */
-osMessageQueueId_t myQueue01Handle;
-const osMessageQueueAttr_t myQueue01_attributes = {
-  .name = "myQueue01"
 };
 /* Definitions for myTimer01 */
 osTimerId_t myTimer01Handle;
@@ -104,11 +99,6 @@ const osTimerAttr_t myTimer02_attributes = {
 osTimerId_t myTimer03Handle;
 const osTimerAttr_t myTimer03_attributes = {
   .name = "myTimer03"
-};
-/* Definitions for myTimer04 */
-osTimerId_t myTimer04Handle;
-const osTimerAttr_t myTimer04_attributes = {
-  .name = "myTimer04"
 };
 /* Definitions for myTimer05 */
 osTimerId_t myTimer05Handle;
@@ -131,26 +121,20 @@ const osSemaphoreAttr_t myBinarySem02_attributes = {
   .name = "myBinarySem02"
 };
 /* USER CODE BEGIN PV */
-uint8_t test_buffer[3 * 5] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
 uint8_t response [7] = {0};
-uint8_t rx_buffer[4 * LIDAR_BUFFER_SIZE] = {0};  // Triple buffer for continuous DMA
-uint8_t copy_buffer[5] = {0};  // Triple buffer for continuous DMA
-uint8_t count = 0;
-//int count = 0;
-bool startup = true;
-bool clear = false;
-volatile uint8_t data_ready_k = 0xFF; // 0xFF = no data ready, 0-2 = which buffer is ready
-HAL_StatusTypeDef type = HAL_OK;
-bool ready_t = true;
-bool retry_conn = true;
+uint8_t rx_buffer[4 * LIDAR_BUFFER_SIZE] = {0};
+volatile uint8_t count = 0;
+volatile uint8_t data_ready_k = 0xFF;
+
+volatile bool startup = true;
 bool zone_mode = false;
 bool filter_mode = false;
 bool led_state = true;
-extern bool zone_detected[GRID_DIM*GRID_DIM];
-extern uint16_t zone_history[GRID_DIM*GRID_DIM];
-
 bool right_haptic_triggered = false;
 bool left_haptic_triggered = false;
+
+extern bool zone_detected[GRID_DIM*GRID_DIM];
+extern uint16_t zone_history[GRID_DIM*GRID_DIM];
 
 /* USER CODE END PV */
 
@@ -168,15 +152,14 @@ static void MX_TIM3_Init(void);
 static void MX_TIM4_Init(void);
 static void MX_TIM5_Init(void);
 static void MX_TIM8_Init(void);
-void StartDefaultTask(void *argument);
-void StartTask02(void *argument);
-void StartTask03(void *argument);
-void StartTask04(void *argument);
-void StartTask05(void *argument);
+void StartLiDARDataTask(void *argument);
+void StartHapticsTask(void *argument);
+void StartLED(void *argument);
+void StartRetryConnection(void *argument);
+void StartChangeModes(void *argument);
 void Callback01(void *argument);
 void Callback02(void *argument);
 void Callback03(void *argument);
-void Callback04(void *argument);
 void Callback05(void *argument);
 
 /* USER CODE BEGIN PFP */
@@ -331,42 +314,34 @@ int main(void)
   /* creation of myTimer03 */
   myTimer03Handle = osTimerNew(Callback03, osTimerPeriodic, NULL, &myTimer03_attributes);
 
-  /* creation of myTimer04 */
-  myTimer04Handle = osTimerNew(Callback04, osTimerPeriodic, NULL, &myTimer04_attributes);
-
   /* creation of myTimer05 */
   myTimer05Handle = osTimerNew(Callback05, osTimerPeriodic, NULL, &myTimer05_attributes);
 
   /* USER CODE BEGIN RTOS_TIMERS */
   osTimerStart(myTimer03Handle, 500);
-  osTimerStart(myTimer04Handle, 2000);
   osTimerStart(myTimer05Handle, 10);
   /* start timers, add new ones, ... */
   /* USER CODE END RTOS_TIMERS */
-
-  /* Create the queue(s) */
-  /* creation of myQueue01 */
-  myQueue01Handle = osMessageQueueNew (16, sizeof(uint16_t), &myQueue01_attributes);
 
   /* USER CODE BEGIN RTOS_QUEUES */
   /* add queues, ... */
   /* USER CODE END RTOS_QUEUES */
 
   /* Create the thread(s) */
-  /* creation of defaultTask */
-  defaultTaskHandle = osThreadNew(StartDefaultTask, NULL, &defaultTask_attributes);
+  /* creation of LiDARDataTask */
+  LiDARDataTaskHandle = osThreadNew(StartLiDARDataTask, NULL, &LiDARDataTask_attributes);
 
-  /* creation of myTask02 */
-  myTask02Handle = osThreadNew(StartTask02, NULL, &myTask02_attributes);
+  /* creation of HapticsTask */
+  HapticsTaskHandle = osThreadNew(StartHapticsTask, NULL, &HapticsTask_attributes);
 
-  /* creation of myTask03 */
-  myTask03Handle = osThreadNew(StartTask03, NULL, &myTask03_attributes);
+  /* creation of LED */
+  LEDHandle = osThreadNew(StartLED, NULL, &LED_attributes);
 
-  /* creation of myTask04 */
-  myTask04Handle = osThreadNew(StartTask04, NULL, &myTask04_attributes);
+  /* creation of RetryConnection */
+  RetryConnectionHandle = osThreadNew(StartRetryConnection, NULL, &RetryConnection_attributes);
 
-  /* creation of myTask05 */
-  myTask05Handle = osThreadNew(StartTask05, NULL, &myTask05_attributes);
+  /* creation of ChangeModes */
+  ChangeModesHandle = osThreadNew(StartChangeModes, NULL, &ChangeModes_attributes);
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
@@ -1180,14 +1155,14 @@ return ch;
 }
 /* USER CODE END 4 */
 
-/* USER CODE BEGIN Header_StartDefaultTask */
+/* USER CODE BEGIN Header_StartLiDARDataTask */
 /**
-  * @brief  Function implementing the defaultTask thread.
+  * @brief  Function implementing the LiDARDataTask thread.
   * @param  argument: Not used
   * @retval None
   */
-/* USER CODE END Header_StartDefaultTask */
-void StartDefaultTask(void *argument)
+/* USER CODE END Header_StartLiDARDataTask */
+void StartLiDARDataTask(void *argument)
 {
   /* USER CODE BEGIN 5 */
   /* Infinite loop */
@@ -1238,16 +1213,16 @@ void StartDefaultTask(void *argument)
   /* USER CODE END 5 */
 }
 
-/* USER CODE BEGIN Header_StartTask02 */
+/* USER CODE BEGIN Header_StartHapticsTask */
 /**
-* @brief Function implementing the myTask02 thread.
+* @brief Function implementing the HapticsTask thread.
 * @param argument: Not used
 * @retval None
 */
-/* USER CODE END Header_StartTask02 */
-void StartTask02(void *argument)
+/* USER CODE END Header_StartHapticsTask */
+void StartHapticsTask(void *argument)
 {
-  /* USER CODE BEGIN StartTask02 */
+  /* USER CODE BEGIN StartHapticsTask */
   /* Infinite loop */
   for(;;)
   {
@@ -1303,19 +1278,19 @@ void StartTask02(void *argument)
     } 
     osDelay(100);
   }
-  /* USER CODE END StartTask02 */
+  /* USER CODE END StartHapticsTask */
 }
 
-/* USER CODE BEGIN Header_StartTask03 */
+/* USER CODE BEGIN Header_StartLED */
 /**
-* @brief Function implementing the myTask03 thread.
+* @brief Function implementing the LED thread.
 * @param argument: Not used
 * @retval None
 */
-/* USER CODE END Header_StartTask03 */
-void StartTask03(void *argument)
+/* USER CODE END Header_StartLED */
+void StartLED(void *argument)
 {
-  /* USER CODE BEGIN StartTask03 */
+  /* USER CODE BEGIN StartLED */
   /* Infinite loop */
   for(;;)
   {
@@ -1342,19 +1317,19 @@ void StartTask03(void *argument)
     WS2812_Send();
     osDelay(100);
   }
-  /* USER CODE END StartTask03 */
+  /* USER CODE END StartLED */
 }
 
-/* USER CODE BEGIN Header_StartTask04 */
+/* USER CODE BEGIN Header_StartRetryConnection */
 /**
-* @brief Function implementing the myTask04 thread.
+* @brief Function implementing the RetryConnection thread.
 * @param argument: Not used
 * @retval None
 */
-/* USER CODE END Header_StartTask04 */
-void StartTask04(void *argument)
+/* USER CODE END Header_StartRetryConnection */
+void StartRetryConnection(void *argument)
 {
-  /* USER CODE BEGIN StartTask04 */
+  /* USER CODE BEGIN StartRetryConnection */
   /* Infinite loop */
   for(;;)
   {
@@ -1371,19 +1346,19 @@ void StartTask04(void *argument)
     ILI9341_DisplayFrame(&hspi1);
     osDelay(3000);
   }
-  /* USER CODE END StartTask04 */
+  /* USER CODE END StartRetryConnection */
 }
 
-/* USER CODE BEGIN Header_StartTask05 */
+/* USER CODE BEGIN Header_StartChangeModes */
 /**
-* @brief Function implementing the myTask05 thread.
+* @brief Function implementing the ChangeModes thread.
 * @param argument: Not used
 * @retval None
 */
-/* USER CODE END Header_StartTask05 */
-void StartTask05(void *argument)
+/* USER CODE END Header_StartChangeModes */
+void StartChangeModes(void *argument)
 {
-  /* USER CODE BEGIN StartTask05 */
+  /* USER CODE BEGIN StartChangeModes */
   /* Infinite loop */
   for(;;)
   {
@@ -1401,7 +1376,7 @@ void StartTask05(void *argument)
     }
     osDelay(100);
   }
-  /* USER CODE END StartTask05 */
+  /* USER CODE END StartChangeModes */
 }
 
 /* Callback01 function */
@@ -1428,14 +1403,6 @@ void Callback03(void *argument)
   /* USER CODE BEGIN Callback03 */
   led_state = !led_state;
   /* USER CODE END Callback03 */
-}
-
-/* Callback04 function */
-void Callback04(void *argument)
-{
-  /* USER CODE BEGIN Callback04 */
-  retry_conn = !retry_conn;
-  /* USER CODE END Callback04 */
 }
 
 /* Callback05 function */
