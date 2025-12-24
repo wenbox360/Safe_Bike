@@ -24,21 +24,25 @@ This project was initally started for a group project consisting of 3 people for
 
 ## Section 2: Development Workflow
 
+![Workflow](Pictures/Readme/Workflow.svg)
+
 ---
 
 ## Section 3: Requirements
 
 Priorities are in order of importance of how much they contribute to safety critical decisions.
 
-| Priority | Requirement | Status |
-|----------|-------------|--------|
-| **Priority 1** | Notify user when incoming vehicles are approaching in the user's blind spots | ✅ |
-| **Priority 2** | Display most updated hazard mapping on LCD | ✅ |
-| **Priority 3** | Display speed and other optional statistics for user | ✅ |
+| Priority | Requirement | 
+|----------|-------------|
+| **Priority 1** | Notify user when incoming vehicles are approaching in the user's blind spots
+| **Priority 2** | Display most updated hazard mapping on LCD
+| **Priority 3** | Display appropiate user interface for user
 
 ---
 
 ## Section 4: System Design
+
+![System Diagram](Pictures/Readme/System_Diagram.svg)
 
 The design is split into two main subsystems (the front and rear parts of the bike), and they will be able to communicate wirelessly via XBee transceivers:
 
@@ -54,11 +58,11 @@ The design is split into two main subsystems (the front and rear parts of the bi
 
 ### Functional Diagram
 
-![Functional Diagram](Pictures/Readme/functional_diagram.png)
+![Functional Diagram](Pictures/Readme/Functional_Diagram.svg)
 
 ### Software Architecture
 
-![Software Architecture](Pictures/Readme/software_architecture.png)
+![Software Architecture](Pictures/Readme/Software_Architecture.svg)
 
 **Note:**
 - Work in **green** are the layers I worked on.
