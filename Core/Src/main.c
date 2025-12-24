@@ -76,7 +76,7 @@ osThreadId_t myTask04Handle;
 const osThreadAttr_t myTask04_attributes = {
   .name = "myTask04",
   .stack_size = 128 * 4,
-  .priority = (osPriority_t) osPriorityBelowNormal6,
+  .priority = (osPriority_t) osPriorityNormal1,
 };
 /* Definitions for myTask05 */
 osThreadId_t myTask05Handle;
@@ -84,13 +84,6 @@ const osThreadAttr_t myTask05_attributes = {
   .name = "myTask05",
   .stack_size = 128 * 4,
   .priority = (osPriority_t) osPriorityLow,
-};
-/* Definitions for myTask06 */
-osThreadId_t myTask06Handle;
-const osThreadAttr_t myTask06_attributes = {
-  .name = "myTask06",
-  .stack_size = 128 * 4,
-  .priority = (osPriority_t) osPriorityBelowNormal5,
 };
 /* Definitions for myQueue01 */
 osMessageQueueId_t myQueue01Handle;
@@ -131,6 +124,11 @@ const osMutexAttr_t myMutex01_attributes = {
 osSemaphoreId_t myBinarySem01Handle;
 const osSemaphoreAttr_t myBinarySem01_attributes = {
   .name = "myBinarySem01"
+};
+/* Definitions for myBinarySem02 */
+osSemaphoreId_t myBinarySem02Handle;
+const osSemaphoreAttr_t myBinarySem02_attributes = {
+  .name = "myBinarySem02"
 };
 /* USER CODE BEGIN PV */
 uint8_t test_buffer[3 * 5] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
@@ -175,7 +173,6 @@ void StartTask02(void *argument);
 void StartTask03(void *argument);
 void StartTask04(void *argument);
 void StartTask05(void *argument);
-void StartTask06(void *argument);
 void Callback01(void *argument);
 void Callback02(void *argument);
 void Callback03(void *argument);
@@ -317,6 +314,9 @@ int main(void)
   /* creation of myBinarySem01 */
   myBinarySem01Handle = osSemaphoreNew(1, 0, &myBinarySem01_attributes);
 
+  /* creation of myBinarySem02 */
+  myBinarySem02Handle = osSemaphoreNew(1, 0, &myBinarySem02_attributes);
+
   /* USER CODE BEGIN RTOS_SEMAPHORES */
   /* add semaphores, ... */
   /* USER CODE END RTOS_SEMAPHORES */
@@ -367,9 +367,6 @@ int main(void)
 
   /* creation of myTask05 */
   myTask05Handle = osThreadNew(StartTask05, NULL, &myTask05_attributes);
-
-  /* creation of myTask06 */
-  myTask06Handle = osThreadNew(StartTask06, NULL, &myTask06_attributes);
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
@@ -1275,7 +1272,7 @@ void StartTask02(void *argument)
         if (triggered) {
           HAL_GPIO_WritePin(GPIOD, GPIO_PIN_1, GPIO_PIN_SET);
           left_haptic_triggered = true;
-          osTimerStart(myTimer01Handle, 100);
+          osTimerStart(myTimer01Handle, 200);
         }
       }
     }
@@ -1300,7 +1297,7 @@ void StartTask02(void *argument)
         if (triggered) {
           HAL_GPIO_WritePin(GPIOG, GPIO_PIN_0, GPIO_PIN_SET);
           right_haptic_triggered = true;
-          osTimerStart(myTimer02Handle, 100);
+          osTimerStart(myTimer02Handle, 200);
         }
       }
     } 
@@ -1361,19 +1358,18 @@ void StartTask04(void *argument)
   /* Infinite loop */
   for(;;)
   {
-    if (startup && retry_conn) {
-      osMutexAcquire(myMutex01Handle, osWaitForever);
-      memset(zone, 0, sizeof(zone));
-      memset(zone_history, 0, sizeof(zone_history));
-      memset(zone_detected, 0, sizeof(zone_detected));
-      osMutexRelease(myMutex01Handle);
+    osSemaphoreAcquire(myBinarySem02Handle, osWaitForever);
+    osMutexAcquire(myMutex01Handle, osWaitForever);
+    memset(zone, 0, sizeof(zone));
+    memset(zone_history, 0, sizeof(zone_history));
+    memset(zone_detected, 0, sizeof(zone_detected));
+    osMutexRelease(myMutex01Handle);
 
-      __HAL_UART_CLEAR_IT(&huart1, UART_CLEAR_OREF);
-      HAL_UART_Receive_DMA(&huart1, rx_buffer, 7);
-      send_scan_command(&huart1);
-      ILI9341_DisplayFrame(&hspi1);
-    }
-    osDelay(1000);
+    __HAL_UART_CLEAR_IT(&huart1, UART_CLEAR_OREF);
+    HAL_UART_Receive_DMA(&huart1, rx_buffer, 7);
+    send_scan_command(&huart1);
+    ILI9341_DisplayFrame(&hspi1);
+    osDelay(3000);
   }
   /* USER CODE END StartTask04 */
 }
@@ -1403,27 +1399,9 @@ void StartTask05(void *argument)
     } else {
       filter_mode = true;
     }
-    osDelay(1);
+    osDelay(100);
   }
   /* USER CODE END StartTask05 */
-}
-
-/* USER CODE BEGIN Header_StartTask06 */
-/**
-* @brief Function implementing the myTask06 thread.
-* @param argument: Not used
-* @retval None
-*/
-/* USER CODE END Header_StartTask06 */
-void StartTask06(void *argument)
-{
-  /* USER CODE BEGIN StartTask06 */
-  /* Infinite loop */
-  for(;;)
-  {
-    osDelay(1);
-  }
-  /* USER CODE END StartTask06 */
 }
 
 /* Callback01 function */
@@ -1465,9 +1443,10 @@ void Callback05(void *argument)
 {
   /* USER CODE BEGIN Callback05 */
   count++;
-  if (count == 30) {
-    startup = true;
+  if (count == 100) {
     count = 0;
+    startup = true;
+    osSemaphoreRelease(myBinarySem02Handle);  
   }
   /* USER CODE END Callback05 */
 }
