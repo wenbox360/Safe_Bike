@@ -102,6 +102,26 @@ osTimerId_t myTimer01Handle;
 const osTimerAttr_t myTimer01_attributes = {
   .name = "myTimer01"
 };
+/* Definitions for myTimer02 */
+osTimerId_t myTimer02Handle;
+const osTimerAttr_t myTimer02_attributes = {
+  .name = "myTimer02"
+};
+/* Definitions for myTimer03 */
+osTimerId_t myTimer03Handle;
+const osTimerAttr_t myTimer03_attributes = {
+  .name = "myTimer03"
+};
+/* Definitions for myTimer04 */
+osTimerId_t myTimer04Handle;
+const osTimerAttr_t myTimer04_attributes = {
+  .name = "myTimer04"
+};
+/* Definitions for myTimer05 */
+osTimerId_t myTimer05Handle;
+const osTimerAttr_t myTimer05_attributes = {
+  .name = "myTimer05"
+};
 /* Definitions for myMutex01 */
 osMutexId_t myMutex01Handle;
 const osMutexAttr_t myMutex01_attributes = {
@@ -111,11 +131,6 @@ const osMutexAttr_t myMutex01_attributes = {
 osSemaphoreId_t myBinarySem01Handle;
 const osSemaphoreAttr_t myBinarySem01_attributes = {
   .name = "myBinarySem01"
-};
-/* Definitions for myBinarySem02 */
-osSemaphoreId_t myBinarySem02Handle;
-const osSemaphoreAttr_t myBinarySem02_attributes = {
-  .name = "myBinarySem02"
 };
 /* USER CODE BEGIN PV */
 uint8_t test_buffer[3 * 5] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
@@ -162,6 +177,10 @@ void StartTask04(void *argument);
 void StartTask05(void *argument);
 void StartTask06(void *argument);
 void Callback01(void *argument);
+void Callback02(void *argument);
+void Callback03(void *argument);
+void Callback04(void *argument);
+void Callback05(void *argument);
 
 /* USER CODE BEGIN PFP */
 
@@ -298,18 +317,30 @@ int main(void)
   /* creation of myBinarySem01 */
   myBinarySem01Handle = osSemaphoreNew(1, 0, &myBinarySem01_attributes);
 
-  /* creation of myBinarySem02 */
-  myBinarySem02Handle = osSemaphoreNew(1, 0, &myBinarySem02_attributes);
-
   /* USER CODE BEGIN RTOS_SEMAPHORES */
   /* add semaphores, ... */
   /* USER CODE END RTOS_SEMAPHORES */
 
   /* Create the timer(s) */
   /* creation of myTimer01 */
-  myTimer01Handle = osTimerNew(Callback01, osTimerPeriodic, NULL, &myTimer01_attributes);
+  myTimer01Handle = osTimerNew(Callback01, osTimerOnce, NULL, &myTimer01_attributes);
+
+  /* creation of myTimer02 */
+  myTimer02Handle = osTimerNew(Callback02, osTimerOnce, NULL, &myTimer02_attributes);
+
+  /* creation of myTimer03 */
+  myTimer03Handle = osTimerNew(Callback03, osTimerPeriodic, NULL, &myTimer03_attributes);
+
+  /* creation of myTimer04 */
+  myTimer04Handle = osTimerNew(Callback04, osTimerPeriodic, NULL, &myTimer04_attributes);
+
+  /* creation of myTimer05 */
+  myTimer05Handle = osTimerNew(Callback05, osTimerPeriodic, NULL, &myTimer05_attributes);
 
   /* USER CODE BEGIN RTOS_TIMERS */
+  osTimerStart(myTimer03Handle, 500);
+  osTimerStart(myTimer04Handle, 2000);
+  osTimerStart(myTimer05Handle, 10);
   /* start timers, add new ones, ... */
   /* USER CODE END RTOS_TIMERS */
 
@@ -1233,20 +1264,21 @@ void StartTask02(void *argument)
         for (int i = GRID_DIM / 4; i < 3 * GRID_DIM / 4; i++) {
           for (int j = GRID_DIM / 2; j < 3 * GRID_DIM / 4; j++) {
             if (zone_history[i * GRID_DIM + j] > 0) {
-              HAL_GPIO_WritePin(GPIOD, GPIO_PIN_1, GPIO_PIN_SET);
-              left_haptic_triggered = true;
-              HAL_TIM_Base_Start_IT(&htim2);
               triggered = true;
               break;
             }
           }
-          if (triggered) {
-            break;
-          }
+          if (triggered) break;
         }
         osMutexRelease(myMutex01Handle);
+
+        if (triggered) {
+          HAL_GPIO_WritePin(GPIOD, GPIO_PIN_1, GPIO_PIN_SET);
+          left_haptic_triggered = true;
+          osTimerStart(myTimer01Handle, 100);
+        }
       }
-      }
+    }
     // Right
     if (!HAL_GPIO_ReadPin(GPIOD, GPIO_PIN_7)) {
       // Haptics
@@ -1257,18 +1289,19 @@ void StartTask02(void *argument)
         for (int i = GRID_DIM / 4; i < 3 * GRID_DIM / 4; i++) {
           for (int j = GRID_DIM / 4; j < GRID_DIM / 2; j++) {
             if (zone_history[i * GRID_DIM + j] > 0) {
-              HAL_GPIO_WritePin(GPIOG, GPIO_PIN_0, GPIO_PIN_SET);
-              right_haptic_triggered = true;
-              HAL_TIM_Base_Start_IT(&htim4);
               triggered = true;
               break;
             }
           }
-          if (triggered) {
-            break;
-          }
+          if (triggered) break;
         }
         osMutexRelease(myMutex01Handle);
+
+        if (triggered) {
+          HAL_GPIO_WritePin(GPIOG, GPIO_PIN_0, GPIO_PIN_SET);
+          right_haptic_triggered = true;
+          osTimerStart(myTimer02Handle, 100);
+        }
       }
     } 
     osDelay(100);
@@ -1397,8 +1430,46 @@ void StartTask06(void *argument)
 void Callback01(void *argument)
 {
   /* USER CODE BEGIN Callback01 */
-
+  HAL_GPIO_WritePin(GPIOD, GPIO_PIN_1, GPIO_PIN_RESET);
+  left_haptic_triggered = false;
   /* USER CODE END Callback01 */
+}
+
+/* Callback02 function */
+void Callback02(void *argument)
+{
+  /* USER CODE BEGIN Callback02 */
+  HAL_GPIO_WritePin(GPIOG, GPIO_PIN_0, GPIO_PIN_RESET);
+  right_haptic_triggered = false;
+  /* USER CODE END Callback02 */
+}
+
+/* Callback03 function */
+void Callback03(void *argument)
+{
+  /* USER CODE BEGIN Callback03 */
+  led_state = !led_state;
+  /* USER CODE END Callback03 */
+}
+
+/* Callback04 function */
+void Callback04(void *argument)
+{
+  /* USER CODE BEGIN Callback04 */
+  retry_conn = !retry_conn;
+  /* USER CODE END Callback04 */
+}
+
+/* Callback05 function */
+void Callback05(void *argument)
+{
+  /* USER CODE BEGIN Callback05 */
+  count++;
+  if (count == 30) {
+    startup = true;
+    count = 0;
+  }
+  /* USER CODE END Callback05 */
 }
 
 /**
@@ -1412,33 +1483,7 @@ void Callback01(void *argument)
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
   /* USER CODE BEGIN Callback 0 */
-  if (htim->Instance == TIM1) {
-    count++;
-    if (count == 30) {
-      startup = true;
-      count = 0;
-    }
-  }
 
-  if (htim->Instance == TIM2) {
-    HAL_GPIO_WritePin(GPIOD, GPIO_PIN_1, GPIO_PIN_RESET);
-    HAL_TIM_Base_Stop_IT(&htim2);
-    left_haptic_triggered = false;
-  }
-
-  if (htim->Instance == TIM4) {
-    HAL_GPIO_WritePin(GPIOG, GPIO_PIN_0, GPIO_PIN_RESET);
-    HAL_TIM_Base_Stop_IT(&htim4);
-    right_haptic_triggered = false;
-  }
-
-  if (htim->Instance == TIM5) {
-    retry_conn = !retry_conn;
-  }
-
-  if (htim->Instance == TIM8) {
-    led_state = !led_state;
-  }
   /* USER CODE END Callback 0 */
   if (htim->Instance == TIM6)
   {
