@@ -276,9 +276,6 @@ int main(void)
   HAL_Delay(1000);
   // Send the express scan command
   send_scan_command(&huart1);
-  HAL_TIM_Base_Start_IT(&htim1);
-  HAL_TIM_Base_Start_IT(&htim5);
-  HAL_TIM_Base_Start_IT(&htim8);
 
 
   /* USER CODE END 2 */
