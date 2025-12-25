@@ -8,7 +8,7 @@ The project is developed for **STM32L4+ Series Arm-based 32-bit MCUs**. The IDE 
 
 ### Hardware Components
 
-- 2x STM32 Nucleo-L4R5ZI boards
+- 1x STM32 Nucleo-L4R5ZI boards
 - 1x RPLidar A1M8
 - 2x Xbee modules (S1 series)
 - 2x Haptic Motors
@@ -18,7 +18,7 @@ The project is developed for **STM32L4+ Series Arm-based 32-bit MCUs**. The IDE 
 
 ### Additional Notes
 
-This project was initally started for a group project consisting of 3 people for an Embedded Systems Course's (EECS 373 @UMich) Final project.
+This project was originally started for a group project consisting of 3 people for an Embedded Systems Course's (EECS 373 @UMich) Final project.
 
 ---
 
@@ -99,5 +99,5 @@ The design is split into two main subsystems (the front and rear parts of the bi
 - **GPIO inputs**: Mode, filter, and left/right controls.
 
 ### Safety / Diagnostics
-- **Watchdog (software timer)**: Triggers reconnect on LiDAR data timeout. LiDar RX activity resets the timer.
+- **Watchdog (software timer)**: Triggers reconnect on LiDAR data timeout. LiDAR RX activity resets the timer.
 - **Error recovery**: UART overrun cleared and LiDAR reconnect attempted in the retry task.
