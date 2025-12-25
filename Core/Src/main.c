@@ -8,6 +8,7 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include "cmsis_os.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -49,27 +50,91 @@ TIM_HandleTypeDef htim5;
 TIM_HandleTypeDef htim8;
 DMA_HandleTypeDef hdma_tim3_ch2;
 
+/* Definitions for LiDARDataTask */
+osThreadId_t LiDARDataTaskHandle;
+const osThreadAttr_t LiDARDataTask_attributes = {
+  .name = "LiDARDataTask",
+  .stack_size = 128 * 4,
+  .priority = (osPriority_t) osPriorityNormal,
+};
+/* Definitions for HapticsTask */
+osThreadId_t HapticsTaskHandle;
+const osThreadAttr_t HapticsTask_attributes = {
+  .name = "HapticsTask",
+  .stack_size = 128 * 4,
+  .priority = (osPriority_t) osPriorityNormal,
+};
+/* Definitions for LED */
+osThreadId_t LEDHandle;
+const osThreadAttr_t LED_attributes = {
+  .name = "LED",
+  .stack_size = 128 * 4,
+  .priority = (osPriority_t) osPriorityBelowNormal7,
+};
+/* Definitions for RetryConnection */
+osThreadId_t RetryConnectionHandle;
+const osThreadAttr_t RetryConnection_attributes = {
+  .name = "RetryConnection",
+  .stack_size = 128 * 4,
+  .priority = (osPriority_t) osPriorityNormal1,
+};
+/* Definitions for ChangeModes */
+osThreadId_t ChangeModesHandle;
+const osThreadAttr_t ChangeModes_attributes = {
+  .name = "ChangeModes",
+  .stack_size = 128 * 4,
+  .priority = (osPriority_t) osPriorityLow,
+};
+/* Definitions for myTimer01 */
+osTimerId_t myTimer01Handle;
+const osTimerAttr_t myTimer01_attributes = {
+  .name = "myTimer01"
+};
+/* Definitions for myTimer02 */
+osTimerId_t myTimer02Handle;
+const osTimerAttr_t myTimer02_attributes = {
+  .name = "myTimer02"
+};
+/* Definitions for myTimer03 */
+osTimerId_t myTimer03Handle;
+const osTimerAttr_t myTimer03_attributes = {
+  .name = "myTimer03"
+};
+/* Definitions for myTimer05 */
+osTimerId_t myTimer05Handle;
+const osTimerAttr_t myTimer05_attributes = {
+  .name = "myTimer05"
+};
+/* Definitions for myMutex01 */
+osMutexId_t myMutex01Handle;
+const osMutexAttr_t myMutex01_attributes = {
+  .name = "myMutex01"
+};
+/* Definitions for myBinarySem01 */
+osSemaphoreId_t myBinarySem01Handle;
+const osSemaphoreAttr_t myBinarySem01_attributes = {
+  .name = "myBinarySem01"
+};
+/* Definitions for myBinarySem02 */
+osSemaphoreId_t myBinarySem02Handle;
+const osSemaphoreAttr_t myBinarySem02_attributes = {
+  .name = "myBinarySem02"
+};
 /* USER CODE BEGIN PV */
-uint8_t test_buffer[3 * 5] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
 uint8_t response [7] = {0};
-uint8_t rx_buffer[4 * LIDAR_BUFFER_SIZE] = {0};  // Triple buffer for continuous DMA
-uint8_t copy_buffer[5] = {0};  // Triple buffer for continuous DMA
-uint8_t count = 0;
-//int count = 0;
-bool startup = true;
-bool clear = false;
-volatile uint8_t data_ready_k = 0xFF; // 0xFF = no data ready, 0-2 = which buffer is ready
-HAL_StatusTypeDef type = HAL_OK;
-bool ready_t = true;
-bool retry_conn = true;
+uint8_t rx_buffer[4 * LIDAR_BUFFER_SIZE] = {0};
+volatile uint8_t count = 0;
+volatile uint8_t data_ready_k = 0xFF;
+
+volatile bool startup = true;
 bool zone_mode = false;
 bool filter_mode = false;
 bool led_state = true;
-extern bool zone_detected[GRID_DIM*GRID_DIM];
-extern uint16_t zone_history[GRID_DIM*GRID_DIM];
-
 bool right_haptic_triggered = false;
 bool left_haptic_triggered = false;
+
+extern bool zone_detected[GRID_DIM*GRID_DIM];
+extern uint16_t zone_history[GRID_DIM*GRID_DIM];
 
 /* USER CODE END PV */
 
@@ -87,6 +152,16 @@ static void MX_TIM3_Init(void);
 static void MX_TIM4_Init(void);
 static void MX_TIM5_Init(void);
 static void MX_TIM8_Init(void);
+void StartLiDARDataTask(void *argument);
+void StartHapticsTask(void *argument);
+void StartLED(void *argument);
+void StartRetryConnection(void *argument);
+void StartChangeModes(void *argument);
+void Callback01(void *argument);
+void Callback02(void *argument);
+void Callback03(void *argument);
+void Callback05(void *argument);
+
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -111,41 +186,12 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
       } else {
         data_ready_k = k;
         HAL_UART_Receive_DMA(&huart1, rx_buffer + next_k * LIDAR_BUFFER_SIZE, LIDAR_BUFFER_SIZE);
+        osSemaphoreRelease(myBinarySem01Handle);
       }
       // Rotate buffer indices for next iteration
       k = next_k;
       next_k = (next_k + 1) % 4;
       count = 0;
-    }
-}
-
-void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
-    if (htim->Instance == TIM1) {
-      count++;
-      if (count == 30) {
-        startup = true;
-        count = 0;
-      }
-    }
-
-    if (htim->Instance == TIM2) {
-      HAL_GPIO_WritePin(GPIOD, GPIO_PIN_1, GPIO_PIN_RESET);
-      HAL_TIM_Base_Stop_IT(&htim2);
-      left_haptic_triggered = false;
-    }
-
-    if (htim->Instance == TIM4) {
-      HAL_GPIO_WritePin(GPIOG, GPIO_PIN_0, GPIO_PIN_RESET);
-      HAL_TIM_Base_Stop_IT(&htim4);
-      right_haptic_triggered = false;
-    }
-
-    if (htim->Instance == TIM5) {
-      retry_conn = !retry_conn;
-    }
-
-    if (htim->Instance == TIM8) {
-      led_state = !led_state;
     }
 }
 
@@ -230,12 +276,82 @@ int main(void)
   HAL_Delay(1000);
   // Send the express scan command
   send_scan_command(&huart1);
-  HAL_TIM_Base_Start_IT(&htim1);
-  HAL_TIM_Base_Start_IT(&htim5);
-  HAL_TIM_Base_Start_IT(&htim8);
 
 
   /* USER CODE END 2 */
+
+  /* Init scheduler */
+  osKernelInitialize();
+  /* Create the mutex(es) */
+  /* creation of myMutex01 */
+  myMutex01Handle = osMutexNew(&myMutex01_attributes);
+
+  /* USER CODE BEGIN RTOS_MUTEX */
+  /* add mutexes, ... */
+  /* USER CODE END RTOS_MUTEX */
+
+  /* Create the semaphores(s) */
+  /* creation of myBinarySem01 */
+  myBinarySem01Handle = osSemaphoreNew(1, 0, &myBinarySem01_attributes);
+
+  /* creation of myBinarySem02 */
+  myBinarySem02Handle = osSemaphoreNew(1, 0, &myBinarySem02_attributes);
+
+  /* USER CODE BEGIN RTOS_SEMAPHORES */
+  /* add semaphores, ... */
+  /* USER CODE END RTOS_SEMAPHORES */
+
+  /* Create the timer(s) */
+  /* creation of myTimer01 */
+  myTimer01Handle = osTimerNew(Callback01, osTimerOnce, NULL, &myTimer01_attributes);
+
+  /* creation of myTimer02 */
+  myTimer02Handle = osTimerNew(Callback02, osTimerOnce, NULL, &myTimer02_attributes);
+
+  /* creation of myTimer03 */
+  myTimer03Handle = osTimerNew(Callback03, osTimerPeriodic, NULL, &myTimer03_attributes);
+
+  /* creation of myTimer05 */
+  myTimer05Handle = osTimerNew(Callback05, osTimerPeriodic, NULL, &myTimer05_attributes);
+
+  /* USER CODE BEGIN RTOS_TIMERS */
+  osTimerStart(myTimer03Handle, 500);
+  osTimerStart(myTimer05Handle, 10);
+  /* start timers, add new ones, ... */
+  /* USER CODE END RTOS_TIMERS */
+
+  /* USER CODE BEGIN RTOS_QUEUES */
+  /* add queues, ... */
+  /* USER CODE END RTOS_QUEUES */
+
+  /* Create the thread(s) */
+  /* creation of LiDARDataTask */
+  LiDARDataTaskHandle = osThreadNew(StartLiDARDataTask, NULL, &LiDARDataTask_attributes);
+
+  /* creation of HapticsTask */
+  HapticsTaskHandle = osThreadNew(StartHapticsTask, NULL, &HapticsTask_attributes);
+
+  /* creation of LED */
+  LEDHandle = osThreadNew(StartLED, NULL, &LED_attributes);
+
+  /* creation of RetryConnection */
+  RetryConnectionHandle = osThreadNew(StartRetryConnection, NULL, &RetryConnection_attributes);
+
+  /* creation of ChangeModes */
+  ChangeModesHandle = osThreadNew(StartChangeModes, NULL, &ChangeModes_attributes);
+
+  /* USER CODE BEGIN RTOS_THREADS */
+  /* add threads, ... */
+  /* USER CODE END RTOS_THREADS */
+
+  /* USER CODE BEGIN RTOS_EVENTS */
+  /* add events, ... */
+  /* USER CODE END RTOS_EVENTS */
+
+  /* Start scheduler */
+  osKernelStart();
+
+  /* We should never get here as control is now taken by the scheduler */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
@@ -243,152 +359,6 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-
-      if (data_ready_k != 0xFF) {
-        FillFrame(pingframe, 0x0000);
-        uint8_t buffer_to_process = data_ready_k;
-        data_ready_k = 0xFF;
-
-        if (new_scan_flag) {
-          memset(zone, 0, sizeof(zone));
-          new_scan_flag = false;
-        }
-
-        // Process the buffer, accounting for potential shifts in decode_normal_scan
-        uint8_t* current_packet = rx_buffer + buffer_to_process * LIDAR_BUFFER_SIZE;
-        uint8_t* buffer_end = current_packet + LIDAR_BUFFER_SIZE; // End of the buffer
-
-        while (current_packet + 5 <= buffer_end) { // Ensure at least 5 bytes remain
-          if (decode_normal_scan(current_packet)) {
-            current_packet += 5; // Move to the next packet only if valid
-          } else {
-            current_packet++; // Skip to the next byte for invalid packets
-          }
-        }
-
-        for (int i = 0; i < GRID_DIM * GRID_DIM; i++) {
-          if (zone_detected[i]) {
-            if (zone_history[i] < 100) {
-              zone_history[i] += 10;
-            }
-          } else {
-            if (zone_history[i] > 0) {
-              zone_history[i] -= 10;  // use faster decay to clear old detections
-            } else {
-              zone_history[i] = 0;
-            }
-          }
-        }
-        memset(zone_detected, 0, sizeof(zone_detected));
-
-        // TODO, depending on mode call function to add the description to the right mode to display on bottom of display
-
-        decoded++;
-        ILI9341_DisplayFrame(&hspi1);
-        displayed++;
-      }
-
-      if (startup && retry_conn) {
-        memset(zone, 0, sizeof(zone));
-        memset(zone_history, 0, sizeof(zone_history));
-        memset(zone_detected, 0, sizeof(zone_detected));
-        __HAL_UART_CLEAR_IT(&huart1, UART_CLEAR_OREF);
-        // Start DMA reception ready for incoming data
-        HAL_UART_Receive_DMA(&huart1, rx_buffer, 7);
-        send_scan_command(&huart1);
-        ILI9341_DisplayFrame(&hspi1);
-      }
-
-      // If read low, meaning pushed then start the corresponding mode
-      if (HAL_GPIO_ReadPin(GPIOE, GPIO_PIN_9)) {
-        zone_mode = false;
-      } else {
-        zone_mode = true;
-      }
-
-      if (HAL_GPIO_ReadPin(GPIOF, GPIO_PIN_13)) {
-        filter_mode = false;
-      } else {
-        filter_mode = true;
-      }
-      // NOTE, THE GRIDS ARE FLIPPED ON THE Y AXIS COMPARED TO THE SCREEN, WE SHOULD DO FLIPPED ORIENTATION BELOW
-      // Left
-
-      if (!HAL_GPIO_ReadPin(GPIOE, GPIO_PIN_2)) {
-        if (led_state) {
-          WS2812_SetLED(12, 255, 0, 0); // Red
-          WS2812_SetLED(13, 255, 0, 0);   // OFF
-          WS2812_SetLED(14, 255, 0, 0);   // OFF
-          WS2812_Send();
-        } else {
-          WS2812_SetLED(12, 0, 0, 0); // Red
-          WS2812_SetLED(13, 0, 0, 0);   // OFF
-          WS2812_SetLED(14, 0, 0, 0);   // OFF
-          WS2812_Send();
-        }
-        // Haptics
-        if (!left_haptic_triggered) {
-
-          bool triggered = false;
-          for (int i = GRID_DIM / 4; i < 3 * GRID_DIM / 4; i++) {
-            for (int j = GRID_DIM / 2; j < 3 * GRID_DIM / 4; j++) {
-              if (zone_history[i * GRID_DIM + j] > 0) {
-                HAL_GPIO_WritePin(GPIOD, GPIO_PIN_1, GPIO_PIN_SET);
-                left_haptic_triggered = true;
-                HAL_TIM_Base_Start_IT(&htim2);
-                triggered = true;
-                break;
-              }
-            }
-            if (triggered) {
-              break;
-            }
-          }
-        }
-      } else {
-        WS2812_SetLED(12, 0, 0, 0); // Red
-        WS2812_SetLED(13, 0, 0, 0);   // OFF
-        WS2812_SetLED(14, 0, 0, 0);   // OFF
-        WS2812_Send();
-      }
-      // Right
-      if (!HAL_GPIO_ReadPin(GPIOD, GPIO_PIN_7)) {
-        if (led_state) {
-          WS2812_SetLED(15, 255, 0, 0); // Red
-          WS2812_SetLED(16, 255, 0, 0);   // OFF
-          WS2812_SetLED(17, 255, 0, 0);   // OFF
-          WS2812_Send();
-        } else {
-          WS2812_SetLED(15, 0, 0, 0); // Red
-          WS2812_SetLED(16, 0, 0, 0);   // OFF
-          WS2812_SetLED(17, 0, 0, 0);   // OFF
-          WS2812_Send();
-        }
-        // Haptics
-        if (!right_haptic_triggered) {
-
-          bool triggered = false;
-          for (int i = GRID_DIM / 4; i < 3 * GRID_DIM / 4; i++) {
-            for (int j = GRID_DIM / 4; j < GRID_DIM / 2; j++) {
-              if (zone_history[i * GRID_DIM + j] > 0) {
-                HAL_GPIO_WritePin(GPIOG, GPIO_PIN_0, GPIO_PIN_SET);
-                right_haptic_triggered = true;
-                HAL_TIM_Base_Start_IT(&htim4);
-                triggered = true;
-                break;
-              }
-            }
-            if (triggered) {
-              break;
-            }
-          }
-        }
-      } else {
-        WS2812_SetLED(15, 0, 0, 0); // Red
-        WS2812_SetLED(16, 0, 0, 0);   // OFF
-        WS2812_SetLED(17, 0, 0, 0);   // OFF
-        WS2812_Send();
-      }
     }
   /* USER CODE END 3 */
 }
@@ -927,10 +897,10 @@ static void MX_DMA_Init(void)
 
   /* DMA interrupt init */
   /* DMA1_Channel1_IRQn interrupt configuration */
-  HAL_NVIC_SetPriority(DMA1_Channel1_IRQn, 0, 0);
+  HAL_NVIC_SetPriority(DMA1_Channel1_IRQn, 5, 0);
   HAL_NVIC_EnableIRQ(DMA1_Channel1_IRQn);
   /* DMA1_Channel2_IRQn interrupt configuration */
-  HAL_NVIC_SetPriority(DMA1_Channel2_IRQn, 0, 0);
+  HAL_NVIC_SetPriority(DMA1_Channel2_IRQn, 5, 0);
   HAL_NVIC_EnableIRQ(DMA1_Channel2_IRQn);
 
 }
@@ -1161,7 +1131,7 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
 
   /* EXTI interrupt init*/
-  HAL_NVIC_SetPriority(EXTI1_IRQn, 0, 0);
+  HAL_NVIC_SetPriority(EXTI1_IRQn, 5, 0);
   HAL_NVIC_EnableIRQ(EXTI1_IRQn);
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
@@ -1181,6 +1151,291 @@ HAL_UART_Transmit(&hlpuart1, (uint8_t *)&ch, 1, 0xFFFF);
 return ch;
 }
 /* USER CODE END 4 */
+
+/* USER CODE BEGIN Header_StartLiDARDataTask */
+/**
+  * @brief  Function implementing the LiDARDataTask thread.
+  * @param  argument: Not used
+  * @retval None
+  */
+/* USER CODE END Header_StartLiDARDataTask */
+void StartLiDARDataTask(void *argument)
+{
+  /* USER CODE BEGIN 5 */
+  /* Infinite loop */
+  for(;;)
+  {
+    osSemaphoreAcquire(myBinarySem01Handle, osWaitForever);
+    FillFrame(pingframe, 0x0000);
+    uint8_t buffer_to_process = data_ready_k;
+    data_ready_k = 0xFF;
+
+    if (new_scan_flag) {
+      memset(zone, 0, sizeof(zone));
+      new_scan_flag = false;
+    }
+
+    // Process the buffer, accounting for potential shifts in decode_normal_scan
+    uint8_t* current_packet = rx_buffer + buffer_to_process * LIDAR_BUFFER_SIZE;
+    uint8_t* buffer_end = current_packet + LIDAR_BUFFER_SIZE; // End of the buffer
+
+    while (current_packet + 5 <= buffer_end) { // Ensure at least 5 bytes remain
+      if (decode_normal_scan(current_packet)) {
+        current_packet += 5; // Move to the next packet only if valid
+      } else {
+        current_packet++; // Skip to the next byte for invalid packets
+      }
+    }
+
+    osMutexAcquire(myMutex01Handle, osWaitForever);
+    for (int i = 0; i < GRID_DIM * GRID_DIM; i++) {
+      if (zone_detected[i]) {
+        if (zone_history[i] < 100) {
+          zone_history[i] += 10;
+        }
+      } else {
+        if (zone_history[i] > 0) {
+          zone_history[i] -= 10;  // use faster decay to clear old detections
+        } else {
+          zone_history[i] = 0;
+        }
+      }
+    }
+    memset(zone_detected, 0, sizeof(zone_detected));
+    osMutexRelease(myMutex01Handle);
+    
+    ILI9341_DisplayFrame(&hspi1);
+    osDelay(100);
+  }
+  /* USER CODE END 5 */
+}
+
+/* USER CODE BEGIN Header_StartHapticsTask */
+/**
+* @brief Function implementing the HapticsTask thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_StartHapticsTask */
+void StartHapticsTask(void *argument)
+{
+  /* USER CODE BEGIN StartHapticsTask */
+  /* Infinite loop */
+  for(;;)
+  {
+    // Left
+    if (!HAL_GPIO_ReadPin(GPIOE, GPIO_PIN_2)) {
+      // Haptics
+      if (!left_haptic_triggered) {
+        bool triggered = false;
+
+        osMutexAcquire(myMutex01Handle, osWaitForever);
+        for (int i = GRID_DIM / 4; i < 3 * GRID_DIM / 4; i++) {
+          for (int j = GRID_DIM / 2; j < 3 * GRID_DIM / 4; j++) {
+            if (zone_history[i * GRID_DIM + j] > 0) {
+              triggered = true;
+              break;
+            }
+          }
+          if (triggered) break;
+        }
+        osMutexRelease(myMutex01Handle);
+
+        if (triggered) {
+          HAL_GPIO_WritePin(GPIOD, GPIO_PIN_1, GPIO_PIN_SET);
+          left_haptic_triggered = true;
+          osTimerStart(myTimer01Handle, 200);
+        }
+      }
+    }
+    // Right
+    if (!HAL_GPIO_ReadPin(GPIOD, GPIO_PIN_7)) {
+      // Haptics
+      if (!right_haptic_triggered) {
+        bool triggered = false;
+
+        osMutexAcquire(myMutex01Handle, osWaitForever);
+        for (int i = GRID_DIM / 4; i < 3 * GRID_DIM / 4; i++) {
+          for (int j = GRID_DIM / 4; j < GRID_DIM / 2; j++) {
+            if (zone_history[i * GRID_DIM + j] > 0) {
+              triggered = true;
+              break;
+            }
+          }
+          if (triggered) break;
+        }
+        osMutexRelease(myMutex01Handle);
+
+        if (triggered) {
+          HAL_GPIO_WritePin(GPIOG, GPIO_PIN_0, GPIO_PIN_SET);
+          right_haptic_triggered = true;
+          osTimerStart(myTimer02Handle, 200);
+        }
+      }
+    } 
+    osDelay(100);
+  }
+  /* USER CODE END StartHapticsTask */
+}
+
+/* USER CODE BEGIN Header_StartLED */
+/**
+* @brief Function implementing the LED thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_StartLED */
+void StartLED(void *argument)
+{
+  /* USER CODE BEGIN StartLED */
+  /* Infinite loop */
+  for(;;)
+  {
+    // Left
+    if (!HAL_GPIO_ReadPin(GPIOE, GPIO_PIN_2) && led_state) {
+      WS2812_SetLED(12, 255, 0, 0); // Red
+      WS2812_SetLED(13, 255, 0, 0);   // OFF
+      WS2812_SetLED(14, 255, 0, 0);   // OFF
+    } else {
+      WS2812_SetLED(12, 0, 0, 0); // Red
+      WS2812_SetLED(13, 0, 0, 0);   // OFF
+      WS2812_SetLED(14, 0, 0, 0);   // OFF
+    }
+    // Right
+    if (!HAL_GPIO_ReadPin(GPIOD, GPIO_PIN_7) && led_state) {
+      WS2812_SetLED(15, 255, 0, 0); // Red
+      WS2812_SetLED(16, 255, 0, 0);   // OFF
+      WS2812_SetLED(17, 255, 0, 0);   // OFF
+    } else {
+      WS2812_SetLED(15, 0, 0, 0); // Red
+      WS2812_SetLED(16, 0, 0, 0);   // OFF
+      WS2812_SetLED(17, 0, 0, 0);   // OFF
+    }
+    WS2812_Send();
+    osDelay(100);
+  }
+  /* USER CODE END StartLED */
+}
+
+/* USER CODE BEGIN Header_StartRetryConnection */
+/**
+* @brief Function implementing the RetryConnection thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_StartRetryConnection */
+void StartRetryConnection(void *argument)
+{
+  /* USER CODE BEGIN StartRetryConnection */
+  /* Infinite loop */
+  for(;;)
+  {
+    osSemaphoreAcquire(myBinarySem02Handle, osWaitForever);
+    osMutexAcquire(myMutex01Handle, osWaitForever);
+    memset(zone, 0, sizeof(zone));
+    memset(zone_history, 0, sizeof(zone_history));
+    memset(zone_detected, 0, sizeof(zone_detected));
+    osMutexRelease(myMutex01Handle);
+
+    __HAL_UART_CLEAR_IT(&huart1, UART_CLEAR_OREF);
+    HAL_UART_Receive_DMA(&huart1, rx_buffer, 7);
+    send_scan_command(&huart1);
+    ILI9341_DisplayFrame(&hspi1);
+    osDelay(3000);
+  }
+  /* USER CODE END StartRetryConnection */
+}
+
+/* USER CODE BEGIN Header_StartChangeModes */
+/**
+* @brief Function implementing the ChangeModes thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_StartChangeModes */
+void StartChangeModes(void *argument)
+{
+  /* USER CODE BEGIN StartChangeModes */
+  /* Infinite loop */
+  for(;;)
+  {
+    // If read low, meaning pushed then start the corresponding mode
+    if (HAL_GPIO_ReadPin(GPIOE, GPIO_PIN_9)) {
+      zone_mode = false;
+    } else {
+      zone_mode = true;
+    }
+
+    if (HAL_GPIO_ReadPin(GPIOF, GPIO_PIN_13)) {
+      filter_mode = false;
+    } else {
+      filter_mode = true;
+    }
+    osDelay(100);
+  }
+  /* USER CODE END StartChangeModes */
+}
+
+/* Callback01 function */
+void Callback01(void *argument)
+{
+  /* USER CODE BEGIN Callback01 */
+  HAL_GPIO_WritePin(GPIOD, GPIO_PIN_1, GPIO_PIN_RESET);
+  left_haptic_triggered = false;
+  /* USER CODE END Callback01 */
+}
+
+/* Callback02 function */
+void Callback02(void *argument)
+{
+  /* USER CODE BEGIN Callback02 */
+  HAL_GPIO_WritePin(GPIOG, GPIO_PIN_0, GPIO_PIN_RESET);
+  right_haptic_triggered = false;
+  /* USER CODE END Callback02 */
+}
+
+/* Callback03 function */
+void Callback03(void *argument)
+{
+  /* USER CODE BEGIN Callback03 */
+  led_state = !led_state;
+  /* USER CODE END Callback03 */
+}
+
+/* Callback05 function */
+void Callback05(void *argument)
+{
+  /* USER CODE BEGIN Callback05 */
+  count++;
+  if (count == 100) {
+    count = 0;
+    startup = true;
+    osSemaphoreRelease(myBinarySem02Handle);  
+  }
+  /* USER CODE END Callback05 */
+}
+
+/**
+  * @brief  Period elapsed callback in non blocking mode
+  * @note   This function is called  when TIM6 interrupt took place, inside
+  * HAL_TIM_IRQHandler(). It makes a direct call to HAL_IncTick() to increment
+  * a global variable "uwTick" used as application time base.
+  * @param  htim : TIM handle
+  * @retval None
+  */
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
+{
+  /* USER CODE BEGIN Callback 0 */
+
+  /* USER CODE END Callback 0 */
+  if (htim->Instance == TIM6)
+  {
+    HAL_IncTick();
+  }
+  /* USER CODE BEGIN Callback 1 */
+
+  /* USER CODE END Callback 1 */
+}
 
 /**
   * @brief  This function is executed in case of error occurrence.

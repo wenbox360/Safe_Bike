@@ -7,5 +7,6 @@
 /.gitignore.swp
 .mxproject
 .project
+.DS_Store
 /STM32L4R5ZITXP_RAM.ld
 /STM32L4R5ZITXP_FLASH.ld
