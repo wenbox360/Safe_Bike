@@ -67,3 +67,37 @@ The design is split into two main subsystems (the front and rear parts of the bi
 **Note:**
 - Work in **green** are the layers I worked on.
 - Work in **red** is configured/abstracted by me with the CubeIDE .ioc (configuration file) tool + CubeIDE's abstraction libraries.
+
+
+## Section 5: Component Design
+
+### OS / RTOS Support
+- **FreeRTOS**: Five tasks (LiDAR, Haptics, LEDs, Retry, Mode change) synchronized with mutexes and semaphores.
+- **SysTick**: 1 ms RTOS timebase and software timers (haptic pulse, watchdog).
+- **NVIC**: Preemptive priorities set for UART DMA RX and timer callbacks.
+
+### LiDAR Ingest & Processing
+- **UART + DMA**: Command/response link to LiDAR with zero-copy buffered RX; ISR signals processing via semaphore.
+- **Processing**: Polar-to-grid mapping with temporal decay, protected by a mutex.
+
+### Display (LCD)
+- **SPI**: Drives the ILI9488 LCD.
+- **Rendering**: Mode-dependent views (raw, filtered, zone) updated in the display task.
+
+### Haptics
+- **GPIO outputs**: Dual motors for left/right alerts.
+- **Software timers**: One-shot pulses per trigger; zone checks under mutex to decide vibration.
+
+### LEDs (WS2812)
+- **PWM/Timer + GPIO**: Drives the LED strip; LED task updates status each cycle.
+
+### Wireless (XBee)
+- **UART**: Front ↔ rear module data relay (LiDAR data upstream; display/haptics downstream).
+- **Error detection & recovery**: Continuously monitors for XBee communication loss or data misalignment and automatically realigns the data stream to recover from faults.
+
+### Buttons / Input
+- **GPIO inputs**: Mode, filter, and left/right controls, polled/debounced in the mode task.
+
+### Safety / Diagnostics
+- **Watchdog (software timer)**: Triggers reconnect on LiDAR data timeout; RX activity resets the timer.
+- **Error recovery**: UART overrun cleared and LiDAR reconnect attempted in the retry task.
