@@ -77,8 +77,8 @@ The design is split into two main subsystems (the front and rear parts of the bi
 - **NVIC**: Preemptive priorities set for UART DMA RX and timer callbacks.
 
 ### LiDAR Ingest & Processing
-- **UART + DMA**: Command/response link to LiDAR with zero-copy buffered RX; ISR signals processing via semaphore.
-- **Processing**: Polar-to-grid mapping with temporal decay, protected by a mutex.
+- **UART + DMA**: Command/response link to LiDAR with ping pong buffer.
+- **Processing**: Polar-to-grid mapping with temporal decay.
 
 ### Display (LCD)
 - **SPI**: Drives the ILI9488 LCD.
@@ -86,18 +86,18 @@ The design is split into two main subsystems (the front and rear parts of the bi
 
 ### Haptics
 - **GPIO outputs**: Dual motors for left/right alerts.
-- **Software timers**: One-shot pulses per trigger; zone checks under mutex to decide vibration.
+- **Software timers**: One-shot pulses per trigger.
 
 ### LEDs (WS2812)
-- **PWM/Timer + GPIO**: Drives the LED strip; LED task updates status each cycle.
+- **PWM/Timer**: Drives the LED strip.
 
 ### Wireless (XBee)
-- **UART**: Front ↔ rear module data relay (LiDAR data upstream; display/haptics downstream).
+- **UART**: Front ↔ rear module data relay.
 - **Error detection & recovery**: Continuously monitors for XBee communication loss or data misalignment and automatically realigns the data stream to recover from faults.
 
 ### Buttons / Input
-- **GPIO inputs**: Mode, filter, and left/right controls, polled/debounced in the mode task.
+- **GPIO inputs**: Mode, filter, and left/right controls.
 
 ### Safety / Diagnostics
-- **Watchdog (software timer)**: Triggers reconnect on LiDAR data timeout; RX activity resets the timer.
+- **Watchdog (software timer)**: Triggers reconnect on LiDAR data timeout. LiDar RX activity resets the timer.
 - **Error recovery**: UART overrun cleared and LiDAR reconnect attempted in the retry task.
